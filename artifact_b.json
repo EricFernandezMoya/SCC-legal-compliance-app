@@ -1,0 +1,750 @@
+{
+  "metadata": {
+    "artifact": "B",
+    "title": "AI Agent Playbook — SCC Software Legal Compliance Project",
+    "version": "1.0",
+    "generated_from": "Artifact A v1.2",
+    "approved_by": "Sunshine Coast Council Compliance Team",
+    "date": "April 2026",
+    "playbook_description": "Machine-readable knowledge base generated from Artifact A v1.2. Contains all approved compliance rules with four-outcome trigger logic, ambiguity phrase libraries, legislative citations, and the master prompt definition. Every rule traces back to a human-approved source in Artifact A.",
+    "document_types_in_scope": [
+      "Software Contracts",
+      "Services Contracts",
+      "Licensing Agreements",
+      "Privacy Policies",
+      "Support Agreements",
+      "Data Sharing Agreements",
+      "Service Level Agreements"
+    ],
+    "outcomes": {
+      "COMPLY": "Clause present and explicitly and unambiguously satisfies this rule.",
+      "PAY_ATTENTION": "Clause present but language is vague or ambiguous and cannot be confirmed as compliant. Reviewer must assess directly.",
+      "NOT_COMPLY": "Clause present but explicitly fails this rule. Specific language quoted in report.",
+      "MISSING": "No clause addressing this rule found in the document."
+    },
+    "critical_rule": "Ambiguity is never a pass. PAY_ATTENTION and MISSING are treated identically for review purposes — both require human assessment before a procurement decision is made.",
+    "fail_condition": "The project is classified as a failure if the tool marks a data selling check as COMPLY or does not flag it when the clause is absent OR ambiguous. 100% flag rate required on rule C2.2 with zero false passes.",
+    "disclaimer": "This tool produces a compliance screening findings report only. It does not constitute legal advice. All findings must be reviewed by a qualified person before any procurement decision is made."
+  },
+
+  "master_prompt": "You are a compliance screening assistant for Sunshine Coast Council. Your job is to analyse supplier documents and determine whether they comply with a specific rule. You must return exactly one of four outcomes: COMPLY, PAY_ATTENTION, NOT_COMPLY, or MISSING. You must never provide legal advice, recommend actions, or make procurement decisions. You observe and report only.\n\nFor each rule you will receive: (1) the rule text describing what to check, (2) the legal citation backing the rule, (3) a list of ambiguity trigger phrases that should cause a PAY_ATTENTION outcome even if a clause is present, and (4) the full text of the supplier document.\n\nDetermination sequence — follow this order strictly:\n1. Search the document for any clause that explicitly and unambiguously satisfies the rule. If found, return COMPLY with the clause quoted.\n2. Search the document for any clause that explicitly violates or fails the rule. If found, return NOT_COMPLY with the clause quoted and the specific reason it fails.\n3. Search the document for any clause that partially addresses the rule but uses vague, conditional or ambiguous language. Check the ambiguity trigger phrases list — if any trigger phrase appears in a relevant clause, return PAY_ATTENTION with the clause quoted and the trigger phrase identified.\n4. If no clause addressing this rule is found at all, return MISSING.\n\nCritical: Ambiguity is never a pass. A clause containing ambiguous language must be flagged as PAY_ATTENTION, not COMPLY. A clause that could mean either a compliant or non-compliant position gives no assurance and must be flagged.\n\nOutput format — return valid JSON only:\n{\n  \"rule_id\": \"[rule id]\",\n  \"outcome\": \"COMPLY | PAY_ATTENTION | NOT_COMPLY | MISSING\",\n  \"clause_quoted\": \"[exact text from document, or null if MISSING]\",\n  \"reason\": \"[plain English explanation of why this outcome was assigned]\",\n  \"citation\": \"[the legislative citation from the rule]\",\n  \"trigger_phrase_matched\": \"[the ambiguity trigger phrase that matched, or null]\"\n}",
+
+  "categories": [
+    {
+      "code": "CAT1",
+      "name": "Procurement Authority & Governance",
+      "description": "Rules that ensure agreements are properly authorised and the procurement process followed Council's legal obligations.",
+      "note": "These rules check procurement process and file documentation rather than document clauses. Some findings may be MISSING by design if the document type does not typically contain this information."
+    },
+    {
+      "code": "CAT2",
+      "name": "Data Sovereignty & Privacy",
+      "description": "Rules that protect Council's data: where it is stored, who can access it, and what happens to it when the agreement ends."
+    },
+    {
+      "code": "CAT3",
+      "name": "Cybersecurity & Information Security",
+      "description": "Rules setting minimum security standards for any supplier with access to Council systems or data."
+    },
+    {
+      "code": "CAT4",
+      "name": "Intellectual Property & Licensing",
+      "description": "Rules about who owns software, outputs and data, and Council's rights if the supplier closes or changes."
+    },
+    {
+      "code": "CAT5",
+      "name": "Contract Performance & Service Levels",
+      "description": "Rules that make performance commitments measurable and enforceable across all document types."
+    },
+    {
+      "code": "CAT6",
+      "name": "Work Health & Safety",
+      "description": "Rules covering the safety obligations of suppliers whose staff work on Council sites.",
+      "note": "These rules apply when supplier workers are physically present at Council premises. For purely cloud-based SaaS or privacy policy documents, these rules may not apply. Check document type before flagging MISSING."
+    },
+    {
+      "code": "CAT7",
+      "name": "Consumer Protection & Fair Dealing",
+      "description": "Rules preventing suppliers from using unfair terms or making misleading claims in any document type."
+    }
+  ],
+
+  "rules": [
+
+    {
+      "id": "C1.1",
+      "category": "CAT1",
+      "check": "The document value must not exceed the delegated authority of the person approving it. Documents committing Council to more than $250,000 require a Council resolution.",
+      "why": "Queensland local government law requires that financial commitments are only made by officers with the appropriate spending authority. An approval at the wrong level exposes Council to an invalid, unenforceable agreement.",
+      "citation": "Local Government Act 2009 (Qld) s.257; Local Government Regulation 2012 (Qld) s.230; SCC Procurement Policy 2023-24 s.4.2; SCC Contract Management Manual 2024-25 s.2.1",
+      "comply_requires": "Document value is stated and falls within delegated authority limits, or evidence of Council resolution is present for contracts over $250,000.",
+      "ambiguity_triggers": [
+        "subject to approval",
+        "pending authorisation",
+        "to be confirmed",
+        "estimated value",
+        "approximate cost",
+        "may vary",
+        "plus applicable charges"
+      ],
+      "missing_if": "No contract value or financial commitment stated in the document.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Licensing Agreements", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C1.2",
+      "category": "CAT1",
+      "check": "The method used to select this supplier must match Council rules for that contract value. If a direct award was used above threshold, written justification must exist on the procurement file.",
+      "why": "Council is legally required to use competitive procurement above set dollar thresholds. Bypassing a tender process without documented justification creates legal risk and is a common audit finding.",
+      "citation": "Local Government Regulation 2012 (Qld) ss.228-233; SCC Procurement Policy 2023-24 ss.5.1-5.4; Local Government Act 2009 (Qld) s.104",
+      "comply_requires": "Document references a competitive procurement process appropriate to the contract value, or contains documented justification for a direct award.",
+      "ambiguity_triggers": [
+        "sole supplier",
+        "preferred supplier",
+        "existing panel",
+        "limited market",
+        "unique capability",
+        "emergency procurement",
+        "direct engagement"
+      ],
+      "missing_if": "No reference to procurement method or supplier selection process found.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Licensing Agreements", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C1.3",
+      "category": "CAT1",
+      "check": "The decision to award must be based on more than price alone. A scoring assessment covering quality, capability, service levels and risk must be on the procurement file.",
+      "why": "Council's obligation is to achieve best value and not lowest cost. An award on price alone without qualitative assessment is a common audit finding and may be legally challenged.",
+      "citation": "Local Government Act 2009 (Qld) s.104(3); SCC Procurement Policy 2023-24 s.6; QITC Framework s.3.2",
+      "comply_requires": "Document or accompanying procurement file references a multi-criteria evaluation including quality, capability, service levels and risk alongside price.",
+      "ambiguity_triggers": [
+        "best price",
+        "lowest cost",
+        "most competitive",
+        "value for money",
+        "commercially competitive"
+      ],
+      "missing_if": "No reference to evaluation criteria or assessment methodology beyond price.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Licensing Agreements", "Support Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C1.4",
+      "category": "CAT1",
+      "check": "Every person involved in evaluating this document must have signed a conflict of interest declaration. Any connection between an evaluator and the supplier must be documented and managed.",
+      "why": "Undeclared conflicts of interest are a serious integrity breach under the Local Government Act. Signed declarations protect Council if procurement decisions are later challenged.",
+      "citation": "Local Government Act 2009 (Qld) ss.170-177; SCC Procurement Policy 2023-24 s.7; SCC Contract Manual s.2.3",
+      "comply_requires": "Document or procurement file contains signed conflict of interest declarations from all evaluators, or confirms no conflicts exist.",
+      "ambiguity_triggers": [
+        "no known conflicts",
+        "conflicts managed",
+        "disclosed interests",
+        "managed appropriately"
+      ],
+      "missing_if": "No reference to conflict of interest declarations or assessment.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Licensing Agreements", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C2.1",
+      "category": "CAT2",
+      "check": "All Council data (including backups and disaster recovery copies) must be stored in Australia. The document must name specific Australian locations. Vague language such as 'geographically distributed' is not acceptable.",
+      "why": "Council holds personal information about residents. Offshore storage triggers complex legal obligations under Queensland privacy law and removes Council's ability to respond to a breach within Australian jurisdiction.",
+      "citation": "QITC Framework s.7.3 (Data Sovereignty); Information Privacy Act 2009 (Qld) s.33; SCC Contract Manual s.6.2",
+      "comply_requires": "Document explicitly states data will be stored in Australia and names specific Australian data centre locations or regions.",
+      "ambiguity_triggers": [
+        "geographically distributed",
+        "global infrastructure",
+        "nearest available region",
+        "cloud infrastructure",
+        "may be stored",
+        "primarily stored",
+        "data residency options",
+        "as required by law",
+        "subject to local laws",
+        "international transfers",
+        "third country"
+      ],
+      "missing_if": "No reference to data storage location, data residency or where Council data will be held.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Privacy Policies", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C2.2",
+      "category": "CAT2",
+      "check": "The supplier must not share, sell, or give Council data to any third party (including their parent company, analytics platforms, or AI services) without Council's explicit written consent for each instance.",
+      "why": "Many supplier documents quietly permit use of customer data for the supplier's own purposes. Council data belongs to Council. Any use beyond service delivery requires Council's active agreement.",
+      "citation": "Information Privacy Act 2009 (Qld) ss.27-30; QITC Framework s.7.4; Competition and Consumer Act 2010 (Cth) Sch.2 (ACL) s.18",
+      "comply_requires": "Document contains an explicit and unambiguous prohibition on sharing, selling or transferring Council data to any third party without Council's prior written consent for each specific instance.",
+      "ambiguity_triggers": [
+        "service improvement",
+        "product improvement",
+        "product development",
+        "improve our services",
+        "aggregated analytics",
+        "aggregated data",
+        "anonymised data",
+        "de-identified data",
+        "statistical purposes",
+        "benchmarking",
+        "industry benchmarks",
+        "training data",
+        "machine learning",
+        "AI training",
+        "model training",
+        "research purposes",
+        "analytics partners",
+        "trusted partners",
+        "affiliated companies",
+        "group companies",
+        "subsidiaries",
+        "as permitted by law",
+        "as required by law",
+        "necessary for delivery",
+        "subprocessors",
+        "third party processors"
+      ],
+      "missing_if": "No clause addressing third party data sharing, data selling or data transfer restrictions found.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Privacy Policies", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"],
+      "critical": true,
+      "critical_note": "This is the primary acceptance criterion rule. The tool must flag both absent and ambiguous data-use clauses. Any match to an ambiguity trigger phrase must return PAY_ATTENTION, not COMPLY."
+    },
+
+    {
+      "id": "C2.3",
+      "category": "CAT2",
+      "check": "When the agreement ends, the supplier must return all Council data in a usable open format (not proprietary) and certify in writing that all copies have been destroyed, within 30 days.",
+      "why": "Without a clear exit clause, Council can be held to ransom: data returned in an unusable format, or suppliers holding sensitive information after termination.",
+      "citation": "QITC Framework s.7.5; SCC Contract Manual s.8.3; Public Records Act 2023 (Qld) s.18",
+      "comply_requires": "Document specifies that on termination Council data will be returned in an open, usable format within 30 days and that all copies will be destroyed with written certification.",
+      "ambiguity_triggers": [
+        "reasonable efforts",
+        "best efforts",
+        "commercially reasonable",
+        "industry standard format",
+        "available format",
+        "upon request",
+        "as agreed",
+        "may retain",
+        "may keep copies",
+        "for legal purposes",
+        "for audit purposes",
+        "standard backup retention",
+        "deletion schedule"
+      ],
+      "missing_if": "No clause addressing data return, data deletion or exit data management on termination.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Privacy Policies", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C2.4",
+      "category": "CAT2",
+      "check": "If Council data is breached or at risk, the supplier must notify Council within 72 hours without exception. A full incident report must follow within 5 business days.",
+      "why": "Queensland privacy law requires Council to report eligible data breaches to the Office of the Information Commissioner. Council cannot meet this obligation if its supplier delays notification. 72 hours is the maximum window.",
+      "citation": "Information Privacy Act 2009 (Qld) ss.36A-36C; QITC Framework s.7.6; SCC Contract Manual s.6.4",
+      "comply_requires": "Document explicitly states the supplier will notify Council within 72 hours of a data breach or security incident, and that a full incident report will follow within 5 business days.",
+      "ambiguity_triggers": [
+        "as soon as practicable",
+        "as soon as reasonably possible",
+        "without undue delay",
+        "promptly",
+        "in a timely manner",
+        "reasonable timeframe",
+        "upon becoming aware",
+        "after investigation",
+        "once confirmed"
+      ],
+      "missing_if": "No clause addressing data breach notification obligations or incident reporting timelines.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Privacy Policies", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C2.5",
+      "category": "CAT2",
+      "check": "All documents, data and outputs created by the supplier on Council's behalf are Council's public records. The supplier must not delete or destroy any such records without Council's written approval.",
+      "why": "Queensland's Public Records Act 2023 makes Council responsible for managing its records regardless of where they are held. A supplier who routinely purges data could be destroying public records.",
+      "citation": "Public Records Act 2023 (Qld) ss.7, 16-18; SCC Contract Manual s.6.5",
+      "comply_requires": "Document states that all records created on Council's behalf remain Council's property and cannot be deleted or destroyed without Council's written approval.",
+      "ambiguity_triggers": [
+        "standard retention policy",
+        "routine deletion",
+        "automated purging",
+        "data lifecycle management",
+        "retention schedule",
+        "may delete",
+        "after expiry",
+        "storage limits",
+        "data minimisation"
+      ],
+      "missing_if": "No clause addressing record ownership, data retention or deletion restrictions for records created on Council's behalf.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C2.6",
+      "category": "CAT2",
+      "check": "The document must disclose whether the supplier uses AI or AI-powered tools in the delivery of services to Council, including in data processing, document analysis, support systems or any customer-facing interaction. Any AI use that involves processing Council data must be explicitly acknowledged.",
+      "why": "Suppliers increasingly embed AI tools in their platforms without clear disclosure. Council has a right to know whether AI is being applied to its data or interactions, particularly where personal information of residents may be involved.",
+      "citation": "Information Privacy Act 2009 (Qld) ss.27-30; QITC Framework s.7.4; SCC Contract Manual s.6.2",
+      "comply_requires": "Document explicitly discloses whether AI tools are used in service delivery and, if so, confirms that Council data processed by AI tools remains subject to the same data handling obligations.",
+      "ambiguity_triggers": [
+        "automated systems",
+        "intelligent automation",
+        "machine learning",
+        "predictive analytics",
+        "natural language processing",
+        "smart features",
+        "AI-powered",
+        "AI-assisted",
+        "algorithmic",
+        "automated decision",
+        "automated processing",
+        "technology partners",
+        "third party tools"
+      ],
+      "missing_if": "No reference to AI use, automated processing or intelligent systems in the document.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Privacy Policies", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C3.1",
+      "category": "CAT3",
+      "check": "The supplier must hold a recognised security certification or operate to a recognised security framework. Council's preferred standard is the Australian Government's Essential Eight at Maturity Level 2. ISO 27001 and other equivalent certifications are also acceptable. Evidence must be provided annually.",
+      "why": "Security claims without evidence are meaningless. The Essential Eight is the primary Australian Government security framework. ISO 27001 and other recognised certifications provide equivalent assurance.",
+      "citation": "QITC Framework ss.8.1-8.3 (Security Requirements); SCC Contract Manual s.7.1; Work Health and Safety Act 2011 (Cth) s.19",
+      "comply_requires": "Document commits to Essential Eight Maturity Level 2, ISO 27001, SOC 2, or equivalent recognised security certification with evidence provided annually.",
+      "ambiguity_triggers": [
+        "industry best practice",
+        "reasonable security measures",
+        "appropriate technical measures",
+        "commercially reasonable security",
+        "security controls in place",
+        "security policies",
+        "we take security seriously",
+        "regular security reviews",
+        "internal security standards"
+      ],
+      "missing_if": "No reference to security standards, certifications or security framework compliance.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Privacy Policies", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C3.2",
+      "category": "CAT3",
+      "check": "The supplier must conduct independent penetration testing annually. Critical findings must be fixed within 30 days; medium findings within 90 days. Results must be shared with Council on request.",
+      "why": "Self-assessed security is unreliable. Annual independent penetration testing is the industry minimum for any organisation holding sensitive data.",
+      "citation": "QITC Framework s.8.4; ACSC Essential Eight; SCC Contract Manual s.7.2",
+      "comply_requires": "Document commits to annual independent penetration testing with defined remediation timelines and results available to Council on request.",
+      "ambiguity_triggers": [
+        "periodic testing",
+        "regular testing",
+        "security assessments",
+        "vulnerability scanning",
+        "internal testing",
+        "as required",
+        "when appropriate",
+        "may conduct"
+      ],
+      "missing_if": "No reference to penetration testing, vulnerability testing or security assessment obligations.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C3.3",
+      "category": "CAT3",
+      "check": "Only authorised personnel may access Council systems or data. Administrative accounts must use multi-factor authentication. When a supplier employee leaves, their access must be removed within 24 hours.",
+      "why": "Stale access accounts are among the most common causes of data breaches. These controls are basic security hygiene.",
+      "citation": "QITC Framework s.8.5; ACSC Essential Eight; SCC Contract Manual s.7.3",
+      "comply_requires": "Document specifies that access is restricted to authorised personnel, MFA is required for administrative access, and access is removed within 24 hours of an employee departure.",
+      "ambiguity_triggers": [
+        "appropriate access controls",
+        "need to know basis",
+        "access management policies",
+        "promptly remove access",
+        "reasonable timeframe",
+        "as soon as practicable",
+        "periodic access reviews"
+      ],
+      "missing_if": "No reference to access controls, authentication requirements or offboarding procedures.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C3.4",
+      "category": "CAT3",
+      "check": "If the supplier detects any cyber-attack or security incident affecting Council's systems or data, they must notify Council within 4 hours. Council must approve any public statements about the incident before release.",
+      "why": "Council has regulatory obligations and reputational interests that require it to control its own incident response from the outset.",
+      "citation": "QITC Framework s.8.6; ACSC Incident Response Guidelines; SCC Contract Manual s.7.4",
+      "comply_requires": "Document specifies a 4-hour notification window for security incidents and requires Council approval before any public communications about incidents are released.",
+      "ambiguity_triggers": [
+        "as soon as practicable",
+        "promptly notify",
+        "without undue delay",
+        "reasonable timeframe",
+        "upon confirmation",
+        "after investigation",
+        "timely notification"
+      ],
+      "missing_if": "No clause addressing security incident notification timelines or communications obligations.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C3.5",
+      "category": "CAT3",
+      "check": "If the supplier uses subcontractors or third-party technology providers to deliver Council services, those parties must meet the same security standards. The supplier remains fully responsible for any breach caused by a sub-contractor.",
+      "why": "The weakest link in a supply chain determines the actual security level. This rule is especially important in licensing and SaaS agreements where multiple technology layers may be involved.",
+      "citation": "QITC Framework s.8.7; SCC Contract Manual s.5.3; Competition and Consumer Act 2010 (Cth) s.236",
+      "comply_requires": "Document states that all subcontractors and third-party providers must meet the same security standards as the supplier, and that the supplier remains fully liable for breaches caused by subcontractors.",
+      "ambiguity_triggers": [
+        "reputable subcontractors",
+        "carefully selected partners",
+        "contractually obligated",
+        "reasonable security requirements",
+        "appropriate measures",
+        "industry standard",
+        "we may use",
+        "may engage third parties"
+      ],
+      "missing_if": "No reference to subcontractor security obligations or supplier liability for third-party actions.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Privacy Policies", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C4.1",
+      "category": "CAT4",
+      "check": "Any software, configuration, report, integration or documentation created specifically for Council belongs to Council and not the supplier. The document must say this clearly. Generic platform features may remain the supplier's IP.",
+      "why": "Without a clear IP ownership clause, a supplier can claim ownership of everything they build, including work Council paid for.",
+      "citation": "QITC Framework s.10.1; SCC Contract Manual s.9.1; Copyright Act 1968 (Cth) s.131",
+      "comply_requires": "Document explicitly assigns ownership of all custom-developed software, configurations, reports, integrations and documentation to Council.",
+      "ambiguity_triggers": [
+        "licence to use",
+        "limited licence",
+        "non-exclusive licence",
+        "platform remains our property",
+        "background IP",
+        "foreground IP",
+        "jointly owned",
+        "shared ownership",
+        "supplier retains rights",
+        "we retain all rights"
+      ],
+      "missing_if": "No clause addressing intellectual property ownership of custom-developed work.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Licensing Agreements"]
+    },
+
+    {
+      "id": "C4.2",
+      "category": "CAT4",
+      "check": "The supplier must list all open-source software components used in the product (a Software Bill of Materials). Copyleft licences that could affect Council's rights to the software must be disclosed and approved.",
+      "why": "Open-source licences can impose conditions that affect what Council is permitted to do with software it receives or commissions.",
+      "citation": "QITC Framework s.10.3; SCC Contract Manual s.9.2; Copyright Act 1968 (Cth)",
+      "comply_requires": "Document includes or commits to providing a Software Bill of Materials and discloses any copyleft licence obligations.",
+      "ambiguity_triggers": [
+        "may include open source",
+        "third party components",
+        "publicly available software",
+        "community editions",
+        "standard libraries",
+        "open source components as applicable"
+      ],
+      "missing_if": "No reference to open-source components, Software Bill of Materials, or third-party software licences.",
+      "applies_to": ["Software Contracts", "Licensing Agreements"]
+    },
+
+    {
+      "id": "C4.3",
+      "category": "CAT4",
+      "check": "The document must specify exactly how many users, sites and entities are covered. Council must be able to verify its own licence compliance. Routine audit costs should not fall on Council unless Council is found to be non-compliant.",
+      "why": "Vague licence terms are a common supplier audit risk. Council can be found over- or under-licensed at any time.",
+      "citation": "QITC Framework s.10.4; SCC Contract Manual s.9.3; Competition and Consumer Act 2010 (Cth) s.18",
+      "comply_requires": "Document specifies the exact number of users, sites and entities covered and states that routine audit costs are borne by the supplier unless non-compliance is confirmed.",
+      "ambiguity_triggers": [
+        "unlimited users",
+        "enterprise licence",
+        "as agreed",
+        "to be determined",
+        "subject to fair use",
+        "reasonable use",
+        "audit rights reserved",
+        "may audit at any time",
+        "audit costs shared"
+      ],
+      "missing_if": "No reference to licence scope, user limits or audit rights.",
+      "applies_to": ["Licensing Agreements", "Software Contracts"]
+    },
+
+    {
+      "id": "C4.4",
+      "category": "CAT4",
+      "check": "For any software system rated as mission-critical by Council, the supplier must provide Council with access to regular, scheduled backups of Council's data. Backup frequency, format and Council's right to retrieve backups at any time must be specified.",
+      "why": "If a mission-critical supplier experiences an outage, is acquired, or changes their platform, Council must be able to recover its data independently.",
+      "citation": "QITC Framework s.10.5; SCC Contract Manual s.9.4",
+      "comply_requires": "Document specifies backup frequency, format (open and accessible), and Council's unconditional right to retrieve its data from backups at any time.",
+      "ambiguity_triggers": [
+        "regular backups",
+        "periodic backups",
+        "industry standard backup",
+        "backup as part of service",
+        "best efforts backup",
+        "backup available on request",
+        "disaster recovery provisions",
+        "business continuity measures"
+      ],
+      "missing_if": "No reference to backup obligations, backup access rights, or data recovery provisions.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C5.1",
+      "category": "CAT5",
+      "check": "Every service level commitment (uptime, response times, resolution times) must have a precise number attached to it, a clear measurement method, and a defined consequence if it is not met. 'Best efforts' without a minimum floor is not acceptable.",
+      "why": "Vague service levels are unenforceable. If the document says 'reasonable uptime' and the system is down for four hours, Council has no contractual basis for a remedy.",
+      "citation": "QITC Framework s.5.1; SCC Contract Manual s.4.1",
+      "comply_requires": "Document contains specific numeric service level commitments (e.g. 99.9% uptime) with defined measurement methods and explicit consequences for non-performance.",
+      "ambiguity_triggers": [
+        "best efforts",
+        "commercially reasonable efforts",
+        "reasonable uptime",
+        "high availability",
+        "target uptime",
+        "typically available",
+        "generally available",
+        "subject to planned maintenance",
+        "approximate response time",
+        "standard response time"
+      ],
+      "missing_if": "No service level commitments, uptime guarantees or performance targets stated.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Support Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C5.2",
+      "category": "CAT5",
+      "check": "When the supplier fails to meet a service level, Council should receive a credit automatically without needing to claim it. Credits must be meaningful and escalate with repeated failure. Persistent failure must trigger a termination right.",
+      "why": "Service credits that require Council to chase them are rarely collected. A credit regime that is automatic and escalating is the only one that creates real accountability.",
+      "citation": "QITC Framework s.5.2; SCC Contract Manual s.4.3; Competition and Consumer Act 2010 (Cth) Sch.2 (ACL) s.64A",
+      "comply_requires": "Document specifies automatic service credits for SLA breaches with an escalating credit scale and a termination right triggered by persistent failure.",
+      "ambiguity_triggers": [
+        "credits available on request",
+        "may provide credits",
+        "credits at our discretion",
+        "pro-rata adjustment",
+        "reasonable remedy",
+        "we will endeavour",
+        "subject to review"
+      ],
+      "missing_if": "No reference to service credits, remedies for SLA breaches, or termination rights for persistent underperformance.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Support Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C5.3",
+      "category": "CAT5",
+      "check": "Council must be able to exit any agreement for any reason with no more than 90 days notice (contracts under 3 years). Exit fees must reduce over time. The supplier must not make exit economically prohibitive.",
+      "why": "Council's circumstances change. Locking Council into an agreement it cannot exit without prohibitive cost removes its ability to respond.",
+      "citation": "QITC Framework s.6.1; SCC Contract Manual s.8.1; Local Government Act 2009 (Qld) s.104",
+      "comply_requires": "Document provides a termination for convenience right with no more than 90 days notice and exit fees that reduce over the contract term.",
+      "ambiguity_triggers": [
+        "termination for cause only",
+        "material breach required",
+        "early termination fee",
+        "break fee",
+        "remaining contract value",
+        "liquidated damages",
+        "notice period to be agreed",
+        "6 months notice",
+        "12 months notice"
+      ],
+      "missing_if": "No termination for convenience clause or exit provisions stated.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Licensing Agreements", "Support Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C5.4",
+      "category": "CAT5",
+      "check": "If the supplier commits a serious breach (particularly a data breach) Council must be able to terminate immediately. The supplier must not cut off Council's access to its own data pending a payment dispute without 30 days written notice.",
+      "why": "In a data breach Council cannot wait weeks for a cure period to expire. Immediate termination rights for serious breaches protect Council's ability to act.",
+      "citation": "QITC Framework s.6.2; SCC Contract Manual s.8.2",
+      "comply_requires": "Document grants Council the right to terminate immediately for serious breaches including data breaches, and prohibits the supplier from cutting off data access during payment disputes without 30 days notice.",
+      "ambiguity_triggers": [
+        "cure period applies",
+        "30 days to remedy",
+        "opportunity to cure",
+        "may suspend access",
+        "right to suspend",
+        "suspension for non-payment",
+        "immediate suspension"
+      ],
+      "missing_if": "No clause addressing termination rights for serious or material breach, or data access suspension.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C5.5",
+      "category": "CAT5",
+      "check": "When any agreement ends, the supplier must actively help Council transition to a new system for up to 6 months, including exporting data, providing documentation, and cooperating with any incoming supplier, at pre-agreed rates.",
+      "why": "Transition assistance is almost always forgotten until it is urgently needed, at which point the supplier holds all the leverage.",
+      "citation": "QITC Framework s.6.3; SCC Contract Manual s.8.4",
+      "comply_requires": "Document commits to providing transition assistance for up to 6 months post-termination including data export, documentation and cooperation with an incoming supplier at pre-agreed rates.",
+      "ambiguity_triggers": [
+        "reasonable transition support",
+        "may assist",
+        "best efforts",
+        "commercially reasonable assistance",
+        "additional fees may apply",
+        "at current rates",
+        "at our discretion",
+        "limited transition support"
+      ],
+      "missing_if": "No clause addressing transition assistance, exit support or cooperation with incoming suppliers.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Support Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C6.1",
+      "category": "CAT6",
+      "check": "When supplier workers are on Council premises, both Council and the supplier share safety responsibilities. The document must acknowledge this. For high-risk physical work, a Safe Work Method Statement is required before work starts.",
+      "why": "Queensland's Work Health and Safety Act makes both Council and the supplier responsible for the safety of workers at Council sites.",
+      "citation": "Work Health and Safety Act 2011 (Cth) ss.19-20; WHS Act 2011 s.34; SCC Contract Manual s.11",
+      "comply_requires": "Document acknowledges shared WHS responsibilities and requires Safe Work Method Statements for high-risk physical work on Council premises.",
+      "ambiguity_triggers": [
+        "comply with applicable laws",
+        "follow site rules",
+        "standard safety procedures",
+        "reasonable care",
+        "supplier responsible for own safety"
+      ],
+      "missing_if": "No reference to WHS obligations, safety responsibilities or Safe Work Method Statements for on-site work.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Support Agreements"],
+      "note": "Only apply to document types where supplier workers may be physically present at Council premises. Not applicable to purely cloud-based SaaS or privacy policy documents."
+    },
+
+    {
+      "id": "C6.2",
+      "category": "CAT6",
+      "check": "Supplier workers carrying out regulated technical activities (electrical, telecommunications, network infrastructure) must hold the required licences and qualifications. Evidence must be provided on request.",
+      "why": "Using unlicensed workers for regulated activities exposes both Council and the supplier to legal liability.",
+      "citation": "Work Health and Safety Act 2011 (Cth) s.19; WHS Regulation 2011 (Cth) Part 4.5; SCC Contract Manual s.11.2",
+      "comply_requires": "Document confirms that workers undertaking regulated technical activities hold required licences and qualifications, and that evidence can be provided on request.",
+      "ambiguity_triggers": [
+        "appropriately qualified",
+        "suitably experienced",
+        "trained personnel",
+        "skilled technicians",
+        "competent workers"
+      ],
+      "missing_if": "No reference to licensing requirements, qualifications or regulated technical work obligations.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Support Agreements"],
+      "note": "Only applicable where on-site regulated technical work is involved."
+    },
+
+    {
+      "id": "C6.3",
+      "category": "CAT6",
+      "check": "If a worker is seriously injured or killed while working for Council, the supplier must notify Council immediately. The supplier must preserve the scene and cooperate fully with any WorkSafe Queensland investigation.",
+      "why": "Council has regulatory notification obligations under the WHS Act that it cannot meet if its supplier delays reporting.",
+      "citation": "Work Health and Safety Act 2011 (Cth) ss.35-39; SCC Contract Manual s.11.3",
+      "comply_requires": "Document commits the supplier to immediately notifying Council of any serious injury or fatality and to preserving the scene and cooperating with WorkSafe Queensland investigations.",
+      "ambiguity_triggers": [
+        "notify as soon as practicable",
+        "promptly notify",
+        "cooperate with investigations",
+        "comply with legal requirements",
+        "reasonable cooperation"
+      ],
+      "missing_if": "No clause addressing incident notification obligations for workplace injuries or fatalities.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Support Agreements"],
+      "note": "Only applicable where on-site work is involved."
+    },
+
+    {
+      "id": "C7.1",
+      "category": "CAT7",
+      "check": "The document must not contain terms that let the supplier change prices, change what they deliver, or terminate the agreement without Council's consent. Any term that creates a significant and unjustifiable imbalance between the parties must be flagged.",
+      "why": "Australia's unfair contract terms legislation voids clauses that create significant imbalance without legitimate reason.",
+      "citation": "Competition and Consumer Act 2010 (Cth) Sch.2 (ACL) ss.23-28; Competition and Consumer Regulations 2010 (Cth) Part 2; CCA s.131",
+      "comply_requires": "Document does not contain terms allowing unilateral price changes, service changes or termination without Council's consent, and all terms are reasonably balanced between parties.",
+      "ambiguity_triggers": [
+        "we reserve the right to modify",
+        "we may change",
+        "at our discretion",
+        "subject to change",
+        "without notice",
+        "with reasonable notice",
+        "we may terminate at any time",
+        "we may suspend",
+        "unilateral changes",
+        "prices subject to change",
+        "fees may increase"
+      ],
+      "missing_if": "No reference to contract variation rights or termination provisions.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Licensing Agreements", "Privacy Policies", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C7.2",
+      "category": "CAT7",
+      "check": "Everything the supplier said or demonstrated about the product during procurement must be accurate and binding. The supplier must not be able to disclaim all representations made before the document was signed.",
+      "why": "Suppliers often make ambitious capability claims during a sales process, then disclaim them in the fine print.",
+      "citation": "Competition and Consumer Act 2010 (Cth) Sch.2 (ACL) ss.18, 29; SCC Contract Manual s.3.1",
+      "comply_requires": "Document does not contain clauses disclaiming all pre-contractual representations, and acknowledges that representations made during procurement are binding.",
+      "ambiguity_triggers": [
+        "entire agreement clause",
+        "supersedes all prior representations",
+        "no reliance on representations",
+        "as is",
+        "without warranty",
+        "no guarantees",
+        "marketing materials not binding",
+        "demonstrations are indicative only"
+      ],
+      "missing_if": "No reference to pre-contractual representations or disclaimer of representations.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Licensing Agreements", "Support Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C7.3",
+      "category": "CAT7",
+      "check": "The agreement must set a fair cap on liability for both parties, at least equal to 12 months of fees for high-data-risk agreements. The cap must not exclude liability for data breaches, fraud or wilful misconduct.",
+      "why": "Liability caps that are too low leave Council with no real financial remedy for serious harm.",
+      "citation": "Competition and Consumer Act 2010 (Cth) Sch.2 (ACL) s.64A; QITC Framework s.11.2; SCC Contract Manual s.12.1",
+      "comply_requires": "Document sets a liability cap of at least 12 months of fees and explicitly excludes data breaches, fraud and wilful misconduct from the liability cap.",
+      "ambiguity_triggers": [
+        "liability limited to fees paid",
+        "liability capped at one month",
+        "liability capped at three months",
+        "no consequential damages",
+        "indirect loss excluded",
+        "limited liability",
+        "maximum liability",
+        "aggregate liability"
+      ],
+      "missing_if": "No liability cap or limitation of liability clause present.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Licensing Agreements", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    },
+
+    {
+      "id": "C7.4",
+      "category": "CAT7",
+      "check": "Indemnity obligations must be mutual and limited to each party's own fault. Council must not be required to indemnify the supplier for harm caused by the supplier's own products, services or actions.",
+      "why": "One-sided indemnity clauses can require Council to pay for the consequences of the supplier's own mistakes.",
+      "citation": "QITC Framework s.11.3; SCC Contract Manual s.12.2; Competition and Consumer Act 2010 (Cth) Sch.2 (ACL) s.23",
+      "comply_requires": "Indemnity obligations are mutual and each party is only required to indemnify the other for harm arising from their own acts, omissions or breach.",
+      "ambiguity_triggers": [
+        "Council shall indemnify",
+        "customer indemnifies",
+        "broad indemnity",
+        "indemnify against any claim",
+        "hold harmless",
+        "defend and indemnify",
+        "irrespective of cause",
+        "regardless of negligence"
+      ],
+      "missing_if": "No indemnity clause present.",
+      "applies_to": ["Software Contracts", "Services Contracts", "Licensing Agreements", "Support Agreements", "Data Sharing Agreements", "Service Level Agreements"]
+    }
+
+  ]
+}

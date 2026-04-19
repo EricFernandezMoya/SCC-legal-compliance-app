@@ -1,4 +1,3 @@
-import os
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -30,20 +29,3 @@ def textQueryToAntropic(textQuery):
 
     return message.content[0].text
 
-def clear_terminal():
-    # 'nt' refers to Windows; 'posix' refers to Linux/macOS
-    os.system('cls' if os.name == 'nt' else 'clear')
-
-'''
-
-query = input("What is your question? ")
-
-answer = textQueryToAntropic(query)
-
-clear_terminal()
-
-textAnswer = f"Query: {query}\n\nAnswer: {answer}"
-
-print(textAnswer)
-
-'''

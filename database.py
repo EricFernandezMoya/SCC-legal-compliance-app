@@ -3,11 +3,13 @@ from mysql.connector import Error
 from dotenv import load_dotenv
 import os
 
-load_dotenv()
+
 
 def create_db_server_connection():
     connection = None
     
+    load_dotenv()
+
     try:
         connection = mysql.connector.connect(
             host = os.getenv("MYSQL_HOST"),
@@ -15,7 +17,7 @@ def create_db_server_connection():
             passwd = os.getenv("MYSQL_PW"), 
             database = os.getenv("MYSQL_DB")
         )
-        print("MySQL Database connection successful")
+       
     except Error as err:
         print(f"Error: '{err}'")
 
@@ -42,9 +44,9 @@ def create_tables():
         db_cursor.execute("CREATE TABLE compliance_risks (risk_id INT AUTO_INCREMENT PRIMARY KEY, report_id INT NOT NULL, risk_level_id INT NOT NULL, rule_id INT NOT NULL, description TEXT, finding_text TEXT, FOREIGN KEY (report_id) REFERENCES compliance_reports(report_id), FOREIGN KEY (risk_level_id) REFERENCES risk_levels(risk_level_id), FOREIGN KEY (rule_id) REFERENCES rules(rule_id));")
         db_cursor.execute("CREATE TABLE snapshot_rules (rule_id INT NOT NULL, snapshot_id INT NOT NULL, PRIMARY KEY (rule_id, snapshot_id), FOREIGN KEY (rule_id) REFERENCES rules(rule_id), FOREIGN KEY (snapshot_id) REFERENCES rules_snapshots(snapshot_id));")
         db_cursor.execute("CREATE TABLE audit_logs (log_id INT AUTO_INCREMENT PRIMARY KEY, entity_type VARCHAR(255), entity_id INT, action VARCHAR(255), actor VARCHAR(255), timestamp_at DATETIME DEFAULT CURRENT_TIMESTAMP);")
+        db_cursor.execute("CREATE TABLE users (user_id INT AUTO_INCREMENT PRIMARY KEY, user_name VARCHAR(100) NOT NULL, password VARCHAR(100) NOT NULL);")
 
-        print("The tables has been created successfully")
-
+       
         db_cursor.execute("SHOW TABLES")
 
         for x in db_cursor:
@@ -53,4 +55,51 @@ def create_tables():
     except Error as err:
         print(f"Error: '{err}'")
     
-create_tables()
+    connection.close()
+
+
+#################################################################################
+#                                                                               #
+#                                  USER TABLE                                   #
+#                                                                               #
+#################################################################################
+
+def selectUser(username):
+
+    try:
+
+        connection = create_db_server_connection()
+        db_cursor = connection.cursor()
+
+        sql = "SELECT * FROM users"
+    
+        db_cursor.execute(sql)
+
+
+        myresult = db_cursor.fetchall()
+
+        return {"username": myresult[0][1], "password": myresult[0][2]}
+    except Error as err:
+        
+        print(f"Error: '{err}'")
+    
+    connection.commit()
+
+
+
+def insertUser(user_name, password):
+
+    try:
+
+        connection = create_db_server_connection()
+        db_cursor = connection.cursor()
+
+        sql = "INSERT INTO users (user_name, password) VALUES (%s, %s)"
+        val = (user_name, password)
+        db_cursor.execute(sql, val)
+    
+    except Error as err:
+        
+        print(f"Error: '{err}'")
+    
+    connection.commit()

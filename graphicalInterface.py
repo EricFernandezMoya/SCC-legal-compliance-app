@@ -2,40 +2,114 @@ from claudeConnection import textQueryToAntropic
 import tkinter as tk
 from tkinter import Frame, Label, Button, Toplevel, Text, PhotoImage, filedialog
 from tkcalendar import DateEntry
+from userHandling import *
+from database import *
+from classesFile import User
 
-def show_frame(frame):
+ERROR_SIZE = "250x80"
+LOGIN_FRAME_SIZE = "300x300"
+MEDIUM_FRAME_SIZE = "500x500"
+LARGE_FRAME_SIZE = "1000x1000"
+
+user = dict()
+# user = User("", "", "", "")
+
+def show_frame(frame, frameSize):
+    root.geometry(frameSize)
     frame.tkraise()
 
 root = tk.Tk()
-root.geometry("1000x1000")
+
 root.title("SCC Legal")
 
 # Setup layout to make frames fill the space
 root.rowconfigure(0, weight=1)
 root.columnconfigure(0, weight=1)
 
+logInFrame = Frame(root)
 mainFrame = Frame(root)
 anthropicFrame = Frame(root)
 
-for frame in (mainFrame, anthropicFrame ):
+for frame in (logInFrame, mainFrame, anthropicFrame ):
     frame.grid(row=0, column=0, sticky='nsew')
 
-show_frame(mainFrame)
+show_frame(logInFrame, LOGIN_FRAME_SIZE)
 
-label = Label(mainFrame, text="Home Page", font=("Arial", 16))
-label.pack(pady=20)
-        
-buttonSettingPage = Button(mainFrame, text="Go to AI Query", command=lambda: show_frame(anthropicFrame))
-buttonSettingPage.pack(pady=20)
 
+#################################################################################
+#                                                                               #
+#                                  LOGIN FRAME                                  #
+#                                                                               #
+#################################################################################
+def login():
+    
+    username = usernameText.get("1.0", "end-1c")
+    password = passwordText.get("1.0", "end-1c")
+    
+    if userLogin(username, password):
+        user.update(selectUser(username))
+        userLabel.config(text=username)
+        show_frame(mainFrame, MEDIUM_FRAME_SIZE)
+
+    else:
+
+        new_window = Toplevel(root)
+        new_window.title("Error")
+        new_window.geometry(ERROR_SIZE)
+    
+        titleLabel = Label(new_window, text="Wrong user name or password", fg="red")
+        titleLabel.place( relx= 0.5, rely= 0.5, anchor= 'center')
+
+    usernameText.delete("1.0", "end")
+    passwordText.delete("1.0", "end")
+
+loginTitleLabel = Label(logInFrame, text="Login", font=("Arial", 16))
+loginTitleLabel.place(relx=0.5, y=20, anchor='center')
+
+usernameLabel =Label(logInFrame, text="User name:")
+usernameLabel.place(x=10, y=50)
+usernameText = Text(logInFrame, width=25, height=1)
+usernameText.place(x=10, y=70)
+
+passwordLabel = Label(logInFrame, text="Jurisdiction:")
+passwordLabel.place(x=10, y=110)
+passwordText = Text(logInFrame, width=25, height=1)
+passwordText.place(x=10, y=130)
+
+loginButton = Button(logInFrame, text="Log in", command= lambda:login())
+loginButton.place(x=10, y=170)
+
+#################################################################################
+#                                                                               #
+#                                   MAIN FRAME                                  #
+#                                                                               #
+#################################################################################
+
+
+homePageTitlelabel = Label(mainFrame, text="Home Page", font=("Arial", 16))
+homePageTitlelabel.place(relx=0.5, y=20, anchor='center')
+
+userLabel = Label(mainFrame)
+userLabel.place(x=10, y=10)
+
+buttonSettingPage = Button(mainFrame, text="Go to AI Query", command= lambda: show_frame(anthropicFrame, LARGE_FRAME_SIZE))
+buttonSettingPage.place(relx=0.5, y=120, anchor='center')
         
 buttonInsertLegalDocument = Button(mainFrame, text="Insert Doc", command= lambda: insertDocWindows())
-buttonInsertLegalDocument.pack(pady=20)
+buttonInsertLegalDocument.place(relx=0.5, y=150, anchor='center')
 
 buttonUpdateLegalDocument = Button(mainFrame, text="Update Doc", command= lambda: updateDocWindows())
-buttonUpdateLegalDocument.pack(pady=20)
+buttonUpdateLegalDocument.place(relx=0.5, y=180, anchor='center')
+
+logoutButton = Button(mainFrame, text="Log out", command= lambda: show_frame(logInFrame, LOGIN_FRAME_SIZE))
+logoutButton.place(relx=0.5, y=210, anchor='center')
 
 
+#################################################################################
+#                                                                               #
+#                                ANTHROPIC FRAME                                #
+#                                                                               #
+#################################################################################
 
 labelTop = Label(anthropicFrame, text="Anthropic Conection", font=("Arial", 16))
 labelTop.pack(pady=20)
@@ -52,7 +126,7 @@ searchButton.pack()
 answerText = Text(anthropicFrame,height=15, width=100, bg="light blue")
 answerText.pack(pady=20, padx=20)
         
-button = Button(anthropicFrame, text="Go to Home", command=lambda: show_frame(mainFrame))
+button = Button(anthropicFrame, text="Go to Home", command=lambda: show_frame(mainFrame, MEDIUM_FRAME_SIZE))
 button.pack()
 
 def queryAI():
@@ -65,20 +139,26 @@ def insertDocWindows():
                 
     new_window = Toplevel(root)
     new_window.title("Insert Legal Document")
-    new_window.geometry("500x500")
+    new_window.geometry(MEDIUM_FRAME_SIZE)
 
     
     titleLabel = Label(new_window, text="Insert Legal Document", font=("Arial", 16))
     titleLabel.place(x=10, y=10)
 
-    Label(new_window, text="Document name:").place(x=10, y=100)
-    Text(new_window, width=50, height=1).place(x=10, y=120)
+    nameLabel =Label(new_window, text="Document name:")
+    nameLabel.place(x=10, y=100)
+    nameText = Text(new_window, width=50, height=1)
+    nameText.place(x=10, y=120)
 
-    Label(new_window, text="Jurisdiction:").place(x=10, y=150)
-    Text(new_window, width=50, height=1).place(x=10, y=170)
+    jurisdictionLabel = Label(new_window, text="Jurisdiction:")
+    jurisdictionLabel.place(x=10, y=150)
+    jurisdictionText = Text(new_window, width=50, height=1)
+    jurisdictionText.place(x=10, y=170)
 
-    Label(new_window, text="Description:").place(x=10, y=200)
-    Text(new_window, width=50, height=15).place(x=10, y=220)
+    descriptionLabel = Label(new_window, text="Description:")
+    descriptionLabel.place(x=10, y=200)
+    descriptionText = Text(new_window, width=50, height=15)
+    descriptionText.place(x=10, y=220)
 
 def selectFilePath(filePathText, parent_window):
     types = [("Data Files", "*.pdf *.doc *.docx *.odt"), ("All Files", "*.*")]
@@ -96,7 +176,7 @@ def updateDocWindows():
     
     new_window = Toplevel(root)
     new_window.title("Insert Legal Document")
-    new_window.geometry("500x500")
+    new_window.geometry(MEDIUM_FRAME_SIZE)
     new_window.transient(root)
     new_window.grab_set()
     new_window.focus_force()

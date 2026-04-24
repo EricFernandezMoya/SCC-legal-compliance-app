@@ -5,4 +5,14 @@ class User:
         self.password = password
         self.privilege = privilege
 
-
+    def get_username(self):
+        return self.username
+    
+    def get_password(self):
+        return self.password
+    
+    def get_name(self):
+        return self.name
+    
+    def get_privilege(self):
+        self.privilege

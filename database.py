@@ -2,7 +2,7 @@ import mysql.connector
 from mysql.connector import Error
 from dotenv import load_dotenv
 import os
-
+from classesFile import User
 
 
 def create_db_server_connection():
@@ -30,10 +30,10 @@ def create_tables():
     try:
         db_cursor = connection.cursor()
 
-        db_cursor.execute("CREATE TABLE categories (category_id INT AUTO_INCREMENT PRIMARY KEY, category_code VARCHAR(25) NOT NULL, category_name VARCHAR(255) NOT NULL);")
-        db_cursor.execute("CREATE TABLE rules (rule_id INT AUTO_INCREMENT PRIMARY KEY, rule_name VARCHAR(255) NOT NULL, description TEXT, category_id INT NOT NULL, approved_by VARCHAR(255), approved_at DATETIME, FOREIGN KEY (category_id) REFERENCES categories(category_id));")
-        db_cursor.execute("CREATE TABLE document_types (document_type_id INT AUTO_INCREMENT PRIMARY KEY, type_name VARCHAR(255) NOT NULL);")
-        db_cursor.execute("CREATE TABLE documents (document_id INT AUTO_INCREMENT PRIMARY KEY, document_name VARCHAR(500) NOT NULL, jurisdiction VARCHAR(255), year INT, description TEXT, date_created DATETIME DEFAULT CURRENT_TIMESTAMP, date_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, document_type_id INT NOT NULL, FOREIGN KEY (document_type_id) REFERENCES document_types(document_type_id));")
+        db_cursor.execute("CREATE TABLE categories (category_id INT AUTO_INCREMENT PRIMARY KEY, category_code VARCHAR(25) NOT NULL UNIQUE, category_name VARCHAR(255) NOT NULL UNIQUE);")
+        db_cursor.execute("CREATE TABLE rules (rule_id INT AUTO_INCREMENT PRIMARY KEY, rule_name VARCHAR(255) NOT NULL UNIQUE, description TEXT, category_id INT NOT NULL, approved_by VARCHAR(255), approved_at DATETIME, FOREIGN KEY (category_id) REFERENCES categories(category_id));")
+        db_cursor.execute("CREATE TABLE document_types (document_type_id INT AUTO_INCREMENT PRIMARY KEY, type_name VARCHAR(255) NOT NULL UNIQUE);")
+        db_cursor.execute("CREATE TABLE documents (document_id INT AUTO_INCREMENT PRIMARY KEY, document_name VARCHAR(500) NOT NULL UNIQUE, jurisdiction VARCHAR(255), year INT, description TEXT, date_created DATETIME DEFAULT CURRENT_TIMESTAMP, date_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, document_type_id INT NOT NULL, FOREIGN KEY (document_type_id) REFERENCES document_types(document_type_id));")
         db_cursor.execute("CREATE TABLE document_versions (version_id INT AUTO_INCREMENT PRIMARY KEY, document_id INT NOT NULL, version_number VARCHAR(255), effective_from DATE, effective_to DATE, source_url VARCHAR(1000), file_path VARCHAR(255), notes TEXT, FOREIGN KEY (document_id) REFERENCES documents(document_id));")
         db_cursor.execute("CREATE TABLE rule_basis (rule_basis_id INT AUTO_INCREMENT PRIMARY KEY, rule_id INT NOT NULL, document_version_id INT NOT NULL, section_name VARCHAR(255), FOREIGN KEY (rule_id) REFERENCES rules(rule_id), FOREIGN KEY (document_version_id) REFERENCES document_versions(version_id));")
         db_cursor.execute("CREATE TABLE rules_snapshots (snapshot_id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(255), approved_by VARCHAR(255), approved_at DATETIME DEFAULT CURRENT_TIMESTAMP, created_at DATETIME);")
@@ -44,9 +44,8 @@ def create_tables():
         db_cursor.execute("CREATE TABLE compliance_risks (risk_id INT AUTO_INCREMENT PRIMARY KEY, report_id INT NOT NULL, risk_level_id INT NOT NULL, rule_id INT NOT NULL, description TEXT, finding_text TEXT, FOREIGN KEY (report_id) REFERENCES compliance_reports(report_id), FOREIGN KEY (risk_level_id) REFERENCES risk_levels(risk_level_id), FOREIGN KEY (rule_id) REFERENCES rules(rule_id));")
         db_cursor.execute("CREATE TABLE snapshot_rules (rule_id INT NOT NULL, snapshot_id INT NOT NULL, PRIMARY KEY (rule_id, snapshot_id), FOREIGN KEY (rule_id) REFERENCES rules(rule_id), FOREIGN KEY (snapshot_id) REFERENCES rules_snapshots(snapshot_id));")
         db_cursor.execute("CREATE TABLE audit_logs (log_id INT AUTO_INCREMENT PRIMARY KEY, entity_type VARCHAR(255), entity_id INT, action VARCHAR(255), actor VARCHAR(255), timestamp_at DATETIME DEFAULT CURRENT_TIMESTAMP);")
-        db_cursor.execute("CREATE TABLE users (user_id INT AUTO_INCREMENT PRIMARY KEY, user_name VARCHAR(100) NOT NULL, password VARCHAR(100) NOT NULL);")
+        db_cursor.execute("CREATE TABLE users (user_id INT AUTO_INCREMENT PRIMARY KEY, user_name VARCHAR(100) NOT NULL UNIQUE, name VARCHAR(255), password VARCHAR(255) NOT NULL, privilege VARCHAR(100) NOT NULL);")
 
-       
         db_cursor.execute("SHOW TABLES")
 
         for x in db_cursor:
@@ -54,9 +53,12 @@ def create_tables():
 
     except Error as err:
         print(f"Error: '{err}'")
-    
-    connection.close()
 
+    finally:
+        
+        if connection.is_connected():
+            db_cursor.close()
+            connection.close()
 
 #################################################################################
 #                                                                               #
@@ -71,35 +73,52 @@ def selectUser(username):
         connection = create_db_server_connection()
         db_cursor = connection.cursor()
 
-        sql = "SELECT * FROM users"
-    
-        db_cursor.execute(sql)
-
-
+        sql = "SELECT * FROM users WHERE user_name=%s"
+        val = (username,)
+        db_cursor.execute(sql, val)
         myresult = db_cursor.fetchall()
 
-        return {"username": myresult[0][1], "password": myresult[0][2]}
+        connection.commit()
+
+    
+        if len(myresult) == 0:
+            return None
+        else:
+            return User(myresult[0][1], myresult[0][2], myresult[0][3], myresult[0][4])
+    
+    
     except Error as err:
         
         print(f"Error: '{err}'")
     
-    connection.commit()
+    finally:
+        
+        if connection.is_connected():
+            db_cursor.close()
+            connection.close()
+    
 
-
-
-def insertUser(user_name, password):
+def insertUser(user_name, name, password, privilege):
 
     try:
 
         connection = create_db_server_connection()
         db_cursor = connection.cursor()
 
-        sql = "INSERT INTO users (user_name, password) VALUES (%s, %s)"
-        val = (user_name, password)
+        sql = "INSERT INTO users (user_name, name, password, privilege) VALUES (%s, %s, %s, %s)"
+        val = (user_name, name,  password, privilege)
         db_cursor.execute(sql, val)
+
+        connection.commit()
     
     except Error as err:
         
         print(f"Error: '{err}'")
+
+    finally:
+        
+        if connection.is_connected():
+            db_cursor.close()
+            connection.close()
+
     
-    connection.commit()

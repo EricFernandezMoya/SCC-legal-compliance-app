@@ -1,6 +1,6 @@
 from claudeConnection import textQueryToAntropic
 import tkinter as tk
-from tkinter import Frame, Label, Button, Toplevel, Text, PhotoImage, filedialog
+from tkinter import Frame, Label, Button, Toplevel, Text, PhotoImage, filedialog, Entry
 from tkcalendar import DateEntry
 from userHandling import *
 from database import *
@@ -11,8 +11,7 @@ LOGIN_FRAME_SIZE = "300x300"
 MEDIUM_FRAME_SIZE = "500x500"
 LARGE_FRAME_SIZE = "1000x1000"
 
-user = dict()
-# user = User("", "", "", "")
+user = User("", "", "", "")
 
 def show_frame(frame, frameSize):
     root.geometry(frameSize)
@@ -44,11 +43,14 @@ show_frame(logInFrame, LOGIN_FRAME_SIZE)
 def login():
     
     username = usernameText.get("1.0", "end-1c")
-    password = passwordText.get("1.0", "end-1c")
+    password = passwordEntry.get()
     
     if userLogin(username, password):
-        user.update(selectUser(username))
+        
+        user = selectUser(username)
+        
         userLabel.config(text=username)
+        
         show_frame(mainFrame, MEDIUM_FRAME_SIZE)
 
     else:
@@ -61,7 +63,7 @@ def login():
         titleLabel.place( relx= 0.5, rely= 0.5, anchor= 'center')
 
     usernameText.delete("1.0", "end")
-    passwordText.delete("1.0", "end")
+    passwordEntry.delete(0, "end")
 
 loginTitleLabel = Label(logInFrame, text="Login", font=("Arial", 16))
 loginTitleLabel.place(relx=0.5, y=20, anchor='center')
@@ -71,10 +73,11 @@ usernameLabel.place(x=10, y=50)
 usernameText = Text(logInFrame, width=25, height=1)
 usernameText.place(x=10, y=70)
 
-passwordLabel = Label(logInFrame, text="Jurisdiction:")
+passwordLabel = Label(logInFrame, text="Password:")
 passwordLabel.place(x=10, y=110)
-passwordText = Text(logInFrame, width=25, height=1)
-passwordText.place(x=10, y=130)
+passwordEntry = Entry(logInFrame, width=25, show="*")
+passwordEntry.place(x=10, y=130)
+passwordEntry.bind("<Return>", lambda event: login())
 
 loginButton = Button(logInFrame, text="Log in", command= lambda:login())
 loginButton.place(x=10, y=170)
@@ -96,13 +99,13 @@ buttonSettingPage = Button(mainFrame, text="Go to AI Query", command= lambda: sh
 buttonSettingPage.place(relx=0.5, y=120, anchor='center')
         
 buttonInsertLegalDocument = Button(mainFrame, text="Insert Doc", command= lambda: insertDocWindows())
-buttonInsertLegalDocument.place(relx=0.5, y=150, anchor='center')
+buttonInsertLegalDocument.place(relx=0.5, y=170, anchor='center')
 
 buttonUpdateLegalDocument = Button(mainFrame, text="Update Doc", command= lambda: updateDocWindows())
-buttonUpdateLegalDocument.place(relx=0.5, y=180, anchor='center')
+buttonUpdateLegalDocument.place(relx=0.5, y=220, anchor='center')
 
 logoutButton = Button(mainFrame, text="Log out", command= lambda: show_frame(logInFrame, LOGIN_FRAME_SIZE))
-logoutButton.place(relx=0.5, y=210, anchor='center')
+logoutButton.place(relx=0.5, y=270, anchor='center')
 
 
 #################################################################################

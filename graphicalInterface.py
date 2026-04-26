@@ -1,6 +1,6 @@
 from claudeConnection import textQueryToAntropic
 import tkinter as tk
-from tkinter import Frame, Label, Button, Toplevel, Text, PhotoImage, filedialog, Entry
+from tkinter import Frame, Label, Button, Toplevel, Text, PhotoImage, filedialog, Entry, StringVar, OptionMenu
 from tkcalendar import DateEntry
 from userHandling import *
 from database import *
@@ -32,7 +32,8 @@ anthropicFrame = Frame(root)
 for frame in (logInFrame, mainFrame, anthropicFrame ):
     frame.grid(row=0, column=0, sticky='nsew')
 
-show_frame(logInFrame, LOGIN_FRAME_SIZE)
+# show_frame(logInFrame, LOGIN_FRAME_SIZE)
+show_frame(anthropicFrame, LARGE_FRAME_SIZE)
 
 
 #################################################################################
@@ -115,27 +116,27 @@ logoutButton.place(relx=0.5, y=270, anchor='center')
 #################################################################################
 
 labelTop = Label(anthropicFrame, text="Anthropic Conection", font=("Arial", 16))
-labelTop.pack(pady=20)
+labelTop.place(relx=0.5, y=20, anchor='center')
 
-labelAskQuestion = Label(anthropicFrame, text="Ask a question to the AI")
-labelAskQuestion.pack(pady=20)
+labelAskQuestion = Label(anthropicFrame, text="Ask a question to Anthropic:")
+labelAskQuestion.place(x=100, y=80)
 
 questionText = Text(anthropicFrame,  height=15, width=100, bg="light blue")
-questionText.pack(pady=20, padx=20)
+questionText.place(relx=0.5, y=110, anchor='n')
 
 searchButton = Button(anthropicFrame, width = 20, text ="Search", command = lambda: queryAI())
-searchButton.pack()
+searchButton.place(relx=0.5, y=390, anchor='n')
 
 answerText = Text(anthropicFrame,height=15, width=100, bg="light blue")
-answerText.pack(pady=20, padx=20)
+answerText.place(relx=0.5, y=450, anchor='n')
         
 button = Button(anthropicFrame, text="Go to Home", command=lambda: show_frame(mainFrame, MEDIUM_FRAME_SIZE))
-button.pack()
+button.place(relx=0.5, y=730, anchor='n')
 
 def queryAI():
     textInput = questionText.get("1.0", "end-1c")
     textOutput = textQueryToAntropic(textInput)
-    answerText.insert(tk.END, textOutput)
+    answerText.insert(tk.END, str(textOutput))
 
 
 def insertDocWindows():

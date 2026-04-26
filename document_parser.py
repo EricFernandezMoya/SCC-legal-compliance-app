@@ -7,6 +7,24 @@ from odf.opendocument import load
 from utils import clear_terminal
 
 
+def format_as_python_literal(text, max_line_length=80):
+    words = text.split()
+    lines = []
+    current = ""
+
+    for word in words:
+        if len(current) + len(word) + 1 > max_line_length:
+            lines.append(f'    "{current.strip()} "')
+            current = ""
+        current += word + " "
+
+    if current:
+        lines.append(f'    "{current.strip()} "')
+
+    formatted = "(\n" + "\n".join(lines) + "\n)"
+    return formatted
+
+
 def parsePDF(file_name):
     
     text = ""
@@ -14,9 +32,10 @@ def parsePDF(file_name):
     reader = PdfReader(file_name)
 
     for page in reader.pages:
-        text = text + page.extract_text()
+        pageText = page.extract_text() or ""
+        text += pageText.strip() + " "
     
-    return text
+    return text.strip()
 
 def parseDOC(file_name):
 
@@ -44,48 +63,28 @@ def parseWebsite(url):
     response = requests.get(url)
 
     soup = BeautifulSoup(response.text, 'html.parser')
+    paragraphs = soup.find_all("p")
+    text = "\n".join(p.get_text(strip=True) for p in paragraphs)
+    return text
 
-    return soup.get_text()
+def parseFile(file_name):
 
-def testing():
-
-    not_finished = True
-
-    while not_finished:
-
-        file_name = input("Write file name or website url: ")
-
-        if file_name.endswith('.pdf'):
+    text = None
     
-            print(parsePDF(file_name))
+    if file_name.endswith('.pdf'):
+    
+        text = parsePDF(file_name)
 
-        elif file_name.endswith('.odt'):
+    elif file_name.endswith('.odt'):
     
-            print(parseODT(file_name))    
+        text = parseODT(file_name)  
     
-        elif file_name.endswith('.doc') or file_name.endswith('.docx'):
+    elif file_name.endswith('.doc') or file_name.endswith('.docx'):
         
-            print(parseDOC(file_name))
+        text = parseDOC(file_name)
 
-        elif file_name.startswith("http"):
-    
-            print(parseWebsite(file_name))
+    elif file_name.startswith("http"):
 
-        else:
-
-            print("file format not suported")
-
-        option = input("\nWhat would you like to do?\npress 1 and enter if you want to read other document or press any key and/or enter to quit: ")
-
-        if(option == "1"):
-
-            clear_terminal()
+        text = parseWebsite(file_name)
         
-        else:
-
-            not_finished = False
-
-
-
-    
-testing()
+    return text

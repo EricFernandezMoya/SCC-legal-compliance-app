@@ -1,6 +1,7 @@
 from anthropic import Anthropic
 from dotenv import load_dotenv
 from openai import OpenAI
+import voyageai
 import os
 
 ###############################################################################
@@ -31,25 +32,11 @@ def textQueryToAntropic(textQuery):
 
     return message.content[0].text
 
-def queryVoyage(textquery):
-    load_dotenv()
-    
-    api_key = os.getenv("VOYAGE_API_KEY")
-    if not api_key:
-        raise ValueError("VOYAGE_API_KEY not found in .env file")
-
-    client = OpenAI(
-        api_key=api_key,
-        base_url="https://api.aimlapi.com",
+def textQueryVoyage(textQuery):
+    vo = voyageai.Client(api_key= os.getenv("VOYAGE_API_KEY"))
+    result = vo.embed(
+        [textQuery],
+        model="voyage-law-2",
+        input_type="document",
     )
-    print(client.models.list())
-
-    try:
-        response = client.embeddings.create(
-            input=textquery,
-            model="text-embedding-3-large"
-        )
-        return response.data[0].embedding
-    except Exception as e:
-        print("Error querying Voyage:", e)
-        return None
+    return result.embeddings

@@ -1,7 +1,9 @@
-from document_parser import *
-from analysis import analyse_contract
+from report_analysis.document_parser import *
+from report_analysis.analysis import analyse_contract
 import tkinter as tk
 from tkinter import Frame, Label, Button, Text, PhotoImage, filedialog, Entry, StringVar, OptionMenu, scrolledtext, Toplevel
+from report_analysis.reports import save_report
+from database.database import *
 
 LARGE_FRAME_SIZE = "1000x1000"
 ERROR_SIZE = "250x80"
@@ -91,6 +93,7 @@ def show_findings(findings):
 
     resultsScrolledText.insert("1.0", resultText)
 
+
 def analyse():
 
     resultsScrolledText.delete("1.0", "end") 
@@ -133,7 +136,6 @@ def analyse():
         return
     
     findings = analyse_contract(documentText)
-
     show_findings(findings)
             
 analyseButton = Button(anthropicFrame, text="Analyse", command=lambda: analyse())
@@ -146,28 +148,3 @@ analyseButton.place(relx=0.885, y=160)
 
 root.mainloop()
 
-def testapp():
-    
-
-    print("=" * 60)
-    print("ANALYSIS TEST")
-    print("=" * 60)
-    print(f"\nContract text under review:\n{text}\n")
-    print("-" * 60)
-
-    findings = analyse_contract(text)
-
-    print("\n" + "=" * 60)
-    print("FINDINGS")
-    print("=" * 60)
-    for f in findings:
-        print(f"\nRule:     {f['rule_id']}")
-        print(f"Outcome:  {f['outcome']}")
-        print(f"Quoted:   {f.get('clause_quoted') or '(none)'}")
-        print(f"Reason:   {f.get('reason')}")
-        print(f"Citation: {f.get('citation')}")
-        print(f"Trigger:  {f.get('trigger_phrase_matched') or '(none)'}")
-
-
-
-    

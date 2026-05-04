@@ -31,12 +31,4 @@ def textQueryToAntropic(textQuery):
     )
 
     return message.content[0].text
-
-def textQueryVoyage(textQuery):
-    vo = voyageai.Client(api_key= os.getenv("VOYAGE_API_KEY"))
-    result = vo.embed(
-        [textQuery],
-        model="voyage-law-2",
-        input_type="document",
-    )
-    return result.embeddings
+    

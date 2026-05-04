@@ -3,8 +3,8 @@ import os
 import re
 from datetime import datetime
 from dotenv import load_dotenv
-from database import create_db_server_connection
-
+from database import *
+from userHandling import createUser
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,41 +23,35 @@ def load_json():
 
 
 # ---------------------------------------------------------------------------
-# Step 2 — Categories
+# Step 2 — Categories, Privileges and Users
 # ---------------------------------------------------------------------------
+def insert_privileges():
+    
+    for name in ["SYSTEM", "ADMIN", "ANALYST", "VIEWER"]:
+        inserPrivilege(name)
 
-def insert_categories(conn, categories):
-    cursor = conn.cursor()
+def insert_users():
+
+    createUser("SYSTEM", "SYSTEM", os.getenv("SYSTEM_PASSWORD"), selectPrivilegeByName("SYSTEM") )
+    createUser("ADMIN", "ADMIN", os.getenv("ADMIN_PASSWORD"), selectPrivilegeByName("ADMIN") )
+
+
+def insert_categories(categories):
     category_map = {}
     for cat in categories:
-        cursor.execute(
-            "INSERT INTO categories (category_code, category_name) VALUES (%s, %s)",
-            (cat['code'], cat['name'])
-        )
-        category_map[cat['code']] = cursor.lastrowid
-    conn.commit()
-    cursor.close()
-    print(f"[2/5] Inserted {len(categories)} categories")
+        
+        insertCategory(cat['code'], cat['name'])
+        category_map[cat['code']] = selectCategoryByName(cat['name'])[0][0]
+        
+    print(f"[2/5] Inserted {len(categories)} categories, 4 privileges and 2 users")
     return category_map
-
 
 # ---------------------------------------------------------------------------
 # Step 3 — Rules (with metadata JSON)
 # ---------------------------------------------------------------------------
 
-def _ensure_rule_metadata_column(conn):
-    cursor = conn.cursor()
-    cursor.execute("SHOW COLUMNS FROM rules LIKE 'rule_metadata'")
-    if not cursor.fetchone():
-        cursor.execute("ALTER TABLE rules ADD COLUMN rule_metadata JSON")
-        conn.commit()
-        print("      Added rule_metadata column to rules table")
-    cursor.close()
+def insert_rules(rules, category_map, approved_by):
 
-
-def insert_rules(conn, rules, category_map, approved_by, approved_at):
-    _ensure_rule_metadata_column(conn)
-    cursor = conn.cursor()
     rule_id_map = {}
     for rule in rules:
         metadata = {
@@ -69,22 +63,10 @@ def insert_rules(conn, rules, category_map, approved_by, approved_at):
         if 'note' in rule:
             metadata['note'] = rule['note']
 
-        cursor.execute(
-            """INSERT INTO rules
-                   (rule_name, description, category_id, approved_by, approved_at, rule_metadata)
-               VALUES (%s, %s, %s, %s, %s, %s)""",
-            (
-                rule['id'],
-                rule['check'],
-                category_map[rule['category']],
-                approved_by,
-                approved_at,
-                json.dumps(metadata),
-            )
-        )
-        rule_id_map[rule['id']] = cursor.lastrowid
-    conn.commit()
-    cursor.close()
+        insertRule(rule['id'], rule['id'], rule['check'], category_map[rule['category']], approved_by, json.dumps(metadata))
+        
+        rule_id_map[rule['id']] = selectRuleByCode(rule['id'])[0][0]
+    
     print(f"[3/5] Inserted {len(rules)} rules with metadata")
     return rule_id_map
 
@@ -93,25 +75,18 @@ def insert_rules(conn, rules, category_map, approved_by, approved_at):
 # Step 4 — Documents, document_versions, rule_basis
 # ---------------------------------------------------------------------------
 
-def _ensure_document_types(conn):
-    cursor = conn.cursor()
+def _ensure_document_types():
+  
     type_map = {}
     for type_name in ('legislation', 'vendor_policy'):
-        cursor.execute(
-            "SELECT document_type_id FROM document_types WHERE type_name = %s",
-            (type_name,)
-        )
-        row = cursor.fetchone()
+
+        row = selectDocumentTypeByName(type_name)
         if row:
-            type_map[type_name] = row[0]
+            type_map[type_name] = row[0][0]
         else:
-            cursor.execute(
-                "INSERT INTO document_types (type_name) VALUES (%s)",
-                (type_name,)
-            )
-            type_map[type_name] = cursor.lastrowid
-    conn.commit()
-    cursor.close()
+            insertDocumentType(type_name)
+            type_map[type_name] = selectDocumentTypeByName(type_name)[0]
+            
     return type_map
 
 
@@ -146,9 +121,8 @@ def _parse_citation(raw):
     return doc_name, raw
 
 
-def insert_documents_versions_and_rule_basis(conn, rules, rule_id_map):
-    type_map = _ensure_document_types(conn)
-    cursor = conn.cursor()
+def insert_documents_versions_and_rule_basis(rules, rule_id_map):
+    type_map = _ensure_document_types()
 
     doc_version_map = {}   # doc_name -> version_id
 
@@ -164,21 +138,11 @@ def insert_documents_versions_and_rule_basis(conn, rules, rule_id_map):
             jurisdiction = _extract_jurisdiction(doc_name)
             year       = _extract_year(doc_name)
 
-            cursor.execute(
-                """INSERT INTO documents
-                       (document_name, jurisdiction, year, document_type_id)
-                   VALUES (%s, %s, %s, %s)""",
-                (doc_name, jurisdiction, year, type_id)
-            )
-            doc_id = cursor.lastrowid
+            insertDocument(doc_name, jurisdiction, year, "", type_id)           
+            doc_id = selectDocumentByName(doc_name)[0][0]
 
-            cursor.execute(
-                "INSERT INTO document_versions (document_id, version_number) VALUES (%s, %s)",
-                (doc_id, '1.0')
-            )
-            doc_version_map[doc_name] = cursor.lastrowid
-
-    conn.commit()
+            insertDocumentVersion(doc_id, '1.0', None, None, None, None, None)
+            doc_version_map[doc_name] = selectDocumentVersionByDocumentIdAndVersion(doc_id, "1.0")[0][0]
 
     # rule_basis — one row per (rule, citation part)
     basis_count = 0
@@ -188,41 +152,29 @@ def insert_documents_versions_and_rule_basis(conn, rules, rule_id_map):
             doc_name, full_citation = _parse_citation(part)
             if not doc_name or doc_name not in doc_version_map:
                 continue
-            cursor.execute(
-                """INSERT INTO rule_basis (rule_id, document_version_id, section_name)
-                   VALUES (%s, %s, %s)""",
-                (rule_db_id, doc_version_map[doc_name], full_citation)
-            )
+            insertRuleBasis(rule_db_id, doc_version_map[doc_name], full_citation)
             basis_count += 1
 
-    conn.commit()
-    cursor.close()
     print(f"[4/5] Inserted {len(doc_version_map)} documents/versions and {basis_count} rule_basis records")
-
 
 # ---------------------------------------------------------------------------
 # Step 5 — Rules snapshot
 # ---------------------------------------------------------------------------
 
-def create_rules_snapshot(conn, rule_id_map, approved_by):
-    cursor = conn.cursor()
-    now = datetime.now()
+def create_rules_snapshot(rule_id_map, approved_by):
 
-    cursor.execute(
-        """INSERT INTO rules_snapshots (label, approved_by, approved_at, created_at)
-           VALUES (%s, %s, %s, %s)""",
-        ('Initial load — artifact_b.json v1.0', approved_by, now, now)
-    )
-    snapshot_id = cursor.lastrowid
+    now = datetime.now()
+    
+    label = 'Initial load — artifact_b.json v1.0'
+
+    insertRulesSnapshot(label, approved_by, now)
+
+    snapshot_id = selectRulesSnapshotByLabel(label)[0][0]
 
     for rule_db_id in rule_id_map.values():
-        cursor.execute(
-            "INSERT INTO snapshot_rules (rule_id, snapshot_id) VALUES (%s, %s)",
-            (rule_db_id, snapshot_id)
-        )
+        
+        insertSnapshotRule(rule_db_id, snapshot_id) 
 
-    conn.commit()
-    cursor.close()
     print(f"[5/5] Created rules snapshot ID={snapshot_id} covering {len(rule_id_map)} rules")
     return snapshot_id
 
@@ -232,21 +184,20 @@ def create_rules_snapshot(conn, rule_id_map, approved_by):
 # ---------------------------------------------------------------------------
 
 def run_ingestion():
+    inserPrivilege()
+    insert_users()
+    
     data        = load_json()
-    approved_by = data['metadata']['approved_by']
-    approved_at = datetime(2026, 4, 1)
+    approved_by = selectUserByName("SYSTEM")[0][0]
 
-    conn = create_db_server_connection()
+    category_map = insert_categories(data['categories'])
+    rule_id_map  = insert_rules(data['rules'], category_map, approved_by)
 
-    category_map = insert_categories(conn, data['categories'])
-    rule_id_map  = insert_rules(conn, data['rules'], category_map, approved_by, approved_at)
+    insert_documents_versions_and_rule_basis(data['rules'], rule_id_map)
+    create_rules_snapshot(rule_id_map, approved_by)
 
-    insert_documents_versions_and_rule_basis(conn, data['rules'], rule_id_map)
-    create_rules_snapshot(conn, rule_id_map, approved_by)
-
-    conn.close()
     print("\nIngestion complete.")
-
-
+'''
 if __name__ == '__main__':
     run_ingestion()
+'''

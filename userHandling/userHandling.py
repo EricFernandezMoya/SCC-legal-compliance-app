@@ -1,5 +1,8 @@
 import bcrypt
-from database import *
+from database.database import (
+    selectUserByName,
+    insertUser,
+)
 from classesFile import User
 
 def hash_password(password):
@@ -19,13 +22,12 @@ def createUser(username, name, password, privilege):
 
 def userLogin(username, password):
    
-    user = selectUser(username)
+    userData = selectUserByName(username)
+    user = User(userData[0][1], userData[0][2], userData[0][3], userData[0][4])
+    
     if not user:
-        print("User doesn't exist")
         return False
         
     stored_hash = user.get_password().encode('utf-8')
 
     return bcrypt.checkpw(password.encode('utf-8'), stored_hash)
-
-# createUser("eryczek", "Eric Fernandez Moya", "210885", "ADMIN")

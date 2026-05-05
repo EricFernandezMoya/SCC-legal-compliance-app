@@ -21,6 +21,61 @@ _OUTCOME_TO_RISK_NAME = {
 }
 
 
+_RISK_NAME_TO_OUTCOME = {
+    'Comply':        'comply',
+    'Not comply':    'not_comply',
+    'Missing':       'missing',
+    'Pay attention': 'pay_attention',
+}
+
+
+def fetch_prior_findings(prior_report_id, conn=None):
+    """
+    Fetch all findings from a prior report keyed by artifact rule_id.
+    Returns {rule_name: {'outcome': str, 'clause_quoted': str, 'reason': str}}
+    or an empty dict if the report is not found or the connection fails.
+    """
+    close_conn = conn is None
+    if conn is None:
+        conn = create_db_server_connection()
+        if conn is None:
+            print("fetch_prior_findings: database connection failed.")
+            return {}
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT r.rule_name,
+                   rl.risk_name,
+                   cr.finding_text,
+                   cr.description
+            FROM compliance_risks cr
+            JOIN rules       r  ON cr.rule_id       = r.rule_id
+            JOIN risk_levels rl ON cr.risk_level_id = rl.risk_level_id
+            WHERE cr.report_id = %s
+            """,
+            (prior_report_id,),
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+    except Error as err:
+        print(f"fetch_prior_findings error: {err}")
+        return {}
+    finally:
+        if close_conn and conn.is_connected():
+            conn.close()
+
+    return {
+        row['rule_name']: {
+            'outcome':       _RISK_NAME_TO_OUTCOME.get(row['risk_name'], row['risk_name'].lower()),
+            'clause_quoted': row['finding_text'],
+            'reason':        row['description'],
+        }
+        for row in rows
+    }
+
+
 def _fetch_risk_level_map(cursor):
     """Return {risk_name: risk_level_id} from the risk_levels table."""
     cursor.execute("SELECT risk_level_id, risk_name FROM risk_levels")

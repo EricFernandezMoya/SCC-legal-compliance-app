@@ -1,12 +1,17 @@
 import json
 import os
+import re
 from anthropic import Anthropic
 from dotenv import load_dotenv
+
+from database import create_db_server_connection
+from document_parser import parseDOC, parsePDF
+from reports import fetch_prior_findings
 
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-JSON_PATH = os.path.join(BASE_DIR, 'DOCS', 'artifact_b.json')
+JSON_PATH = os.path.join(BASE_DIR, 'SCCProject', 'artifact_b.json')
 
 
 # ---------------------------------------------------------------------------
@@ -29,12 +34,15 @@ def load_rules():
     for rule in data['rules']:
         rules.append({
             'rule_id':            rule['id'],
+            'title':              rule['title'],
             'description':        rule['check'],
             'citation':           rule['citation'],
             'ambiguity_triggers': rule.get('ambiguity_triggers', []),
             'comply_requires':    rule.get('comply_requires', ''),
             'missing_if':         rule.get('missing_if', ''),
             'why':                rule.get('why', ''),
+            'critical':           rule.get('critical', False),
+            'notes':              rule.get('notes', ''),
         })
     return rules
 
@@ -43,28 +51,45 @@ def load_rules():
 # Step 2 — Build single user prompt (all rules + full contract)
 # ---------------------------------------------------------------------------
 
-def build_user_prompt(rules, contract_text):
+def build_user_prompt(rules, contract_text, prior_findings=None):
     rules_block = []
     for rule in rules:
         triggers = rule['ambiguity_triggers']
         triggers_formatted = '\n'.join(f'  - {t}' for t in triggers) if triggers else '  (none)'
-        rules_block.append(
-            f"RULE ID: {rule['rule_id']}\n"
-            f"RULE CHECK: {rule['description']}\n"
-            f"CITATION: {rule['citation']}\n"
-            f"COMPLY REQUIRES: {rule['comply_requires']}\n"
-            f"MISSING IF: {rule['missing_if']}\n"
-            f"WHY: {rule['why']}\n"
-            f"AMBIGUITY TRIGGER PHRASES:\n{triggers_formatted}"
-        )
+        lines = [
+            f"RULE ID: {rule['rule_id']}",
+            f"RULE TITLE: {rule['title']}",
+            f"RULE CHECK: {rule['description']}",
+            f"CITATION: {rule['citation']}",
+            f"COMPLY REQUIRES: {rule['comply_requires']}",
+            f"MISSING IF: {rule['missing_if']}",
+            f"WHY: {rule['why']}",
+            f"AMBIGUITY TRIGGER PHRASES:\n{triggers_formatted}",
+        ]
+        if rule.get('critical'):
+            lines.insert(2, "CRITICAL RULE: Yes — ambiguity triggers must return PAY_ATTENTION, not COMPLY")
+        if rule.get('notes'):
+            lines.append(f"NOTES: {rule['notes']}")
+        rules_block.append('\n'.join(lines))
 
     rules_text = '\n\n'.join(rules_block)
+
+    comparison_section = ""
+    if prior_findings:
+        comparison_section = (
+            "\n\n=== YEAR-TO-YEAR COMPARISON ===\n"
+            "A prior report exists for this vendor. Where relevant, note if a "
+            "clause that previously failed now complies, or if a previously "
+            "compliant clause has changed or been removed.\n"
+            "Change labels priority order (if multiple apply, use the highest): "
+            "ESCALATED > REGRESSED > NEW_GAP > GAP_FILLED > IMPROVED > NEW_RULE > UNCHANGED"
+        )
 
     return (
         "Analyse the contract text below against every rule listed. "
         "Return a JSON array — one finding object per rule, in rule order. "
         "Each object must contain exactly these fields: "
-        "rule_id, outcome, clause_quoted, reason, citation, trigger_phrase_matched.\n\n"
+        f"rule_id, rule_title, outcome, clause_quoted, reason, citation, trigger_phrase_matched.{comparison_section}\n\n"
         f"RULES:\n{rules_text}\n\n"
         f"CONTRACT TEXT:\n{contract_text}"
     )
@@ -115,27 +140,296 @@ def parse_findings(response_text):
 
 
 # ---------------------------------------------------------------------------
-# Step 5 — Main analysis function
+# Year-to-year comparison helpers
 # ---------------------------------------------------------------------------
 
-def analyse_contract(contract_text):
+def _normalize_outcome(outcome):
+    o = (outcome or '').strip().lower().replace(' ', '_')
+    if o in ('attention', 'ambiguous'):
+        return 'pay_attention'
+    return o
+
+
+def _change_label_and_explanation(prior, current):
+    if prior == 'pay_attention' and current == 'not_comply':
+        return 'ESCALATED', "Worsened from 'Pay attention' to 'Not comply'."
+    if prior == 'comply' and current in ('not_comply', 'pay_attention'):
+        return 'REGRESSED', f"Previously complying — now '{current.replace('_', ' ')}'."
+    if prior == 'comply' and current == 'missing':
+        return 'NEW_GAP', "Previously complying — clause now absent."
+    if prior == 'missing' and current != 'missing':
+        return 'GAP_FILLED', "Previously missing — clause now present."
+    if prior in ('not_comply', 'pay_attention') and current == 'comply':
+        return 'IMPROVED', f"Previously '{prior.replace('_', ' ')}' — now complying."
+    return 'UNCHANGED', f"No change from prior report ({current.replace('_', ' ')})."
+
+
+def compare_findings(current_findings, prior_findings):
+    """
+    Attach a change_summary dict to each finding in current_findings.
+    prior_findings: {rule_id: {outcome, ...}} from fetch_prior_findings().
+    Mutates and returns current_findings.
+    """
+    for finding in current_findings:
+        rule_id = finding.get('rule_id')
+        current = _normalize_outcome(finding.get('outcome', ''))
+
+        if rule_id not in prior_findings:
+            label       = 'NEW_RULE'
+            explanation = 'Rule not assessed in the prior report.'
+        else:
+            prior = _normalize_outcome(prior_findings[rule_id].get('outcome', ''))
+            if prior == current:
+                label       = 'UNCHANGED'
+                explanation = f"No change from prior report ({current.replace('_', ' ')})."
+            else:
+                label, explanation = _change_label_and_explanation(prior, current)
+
+        finding['change_summary'] = {'label': label, 'explanation': explanation}
+
+    return current_findings
+
+
+# ---------------------------------------------------------------------------
+# Step 5a — Single-document analysis (backward compatible)
+# ---------------------------------------------------------------------------
+
+def analyse_contract(contract_text, prior_report_id=None):
     """
     Analyse a full contract text against all rules in artifact_b.json.
     Makes a single Claude API call and returns a list of finding dicts,
     one per rule, with fields: rule_id, outcome, clause_quoted, reason,
     citation, trigger_phrase_matched.
+    If prior_report_id is given, each finding also gets a change_summary field.
     """
-    master_prompt = load_master_prompt()
-    rules         = load_rules()
+    master_prompt  = load_master_prompt()
+    rules          = load_rules()
+    prior_findings = fetch_prior_findings(prior_report_id) if prior_report_id else {}
 
     print(f"Loaded {len(rules)} rules from artifact_b.json.")
     print("Calling Claude with full contract and all rules ...", flush=True)
 
-    user_prompt = build_user_prompt(rules, contract_text)
+    user_prompt = build_user_prompt(rules, contract_text, prior_findings or None)
+    response    = call_claude(master_prompt, user_prompt)
+    findings    = parse_findings(response)
+
+    print("RAW CLAUDE RESPONSE:")
+    print(response)
+    print(f"Received {len(findings)} findings.")
+
+    if prior_findings:
+        compare_findings(findings, prior_findings)
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# Step 5b — Multi-document vendor group analysis
+# ---------------------------------------------------------------------------
+
+PRECEDENCE_PATTERNS = [
+    r'in the event of (?:any )?conflict',
+    r'in case of (?:any )?conflict',
+    r'order of precedence',
+    r'shall (?:take )?prevail',
+    r'shall take precedence',
+    r'supersedes?(?: and)?(?:\s+replaces?)?',
+    r'in the event of (?:any )?inconsistency',
+    r'conflict(?:ing)? (?:terms?|provisions?|clauses?)',
+    r'notwithstanding (?:any )?(?:other|conflicting)',
+    r'takes? priority over',
+    r'controls? over',
+]
+
+
+def detect_precedence_clause(documents):
+    """
+    Pre-scan all documents for precedence language using regex.
+    Returns {'clause': str, 'source': str} for the first match found, else None.
+    'clause' is the surrounding sentence context; 'source' is the document name.
+    """
+    for doc in documents:
+        text = doc['text']
+        for pattern in PRECEDENCE_PATTERNS:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                start = max(0, match.start() - 100)
+                end   = min(len(text), match.end() + 200)
+                return {
+                    'clause': text[start:end].strip(),
+                    'source': doc['name'],
+                }
+    return None
+
+
+def build_group_user_prompt(rules, documents, precedence=None, prior_findings=None):
+    """
+    Build a combined analysis prompt for multiple documents from one vendor.
+    documents:     list of {'name': str, 'text': str}
+    precedence:    {'clause': str, 'source': str} or None
+    prior_findings: {rule_id: {outcome, ...}} or None
+    """
+    rules_block = []
+    for rule in rules:
+        triggers = rule['ambiguity_triggers']
+        triggers_formatted = '\n'.join(f'  - {t}' for t in triggers) if triggers else '  (none)'
+        lines = [
+            f"RULE ID: {rule['rule_id']}",
+            f"RULE TITLE: {rule['title']}",
+            f"RULE CHECK: {rule['description']}",
+            f"CITATION: {rule['citation']}",
+            f"COMPLY REQUIRES: {rule['comply_requires']}",
+            f"MISSING IF: {rule['missing_if']}",
+            f"WHY: {rule['why']}",
+            f"AMBIGUITY TRIGGER PHRASES:\n{triggers_formatted}",
+        ]
+        if rule.get('critical'):
+            lines.insert(2, "CRITICAL RULE: Yes — ambiguity triggers must return PAY_ATTENTION, not COMPLY")
+        if rule.get('notes'):
+            lines.append(f"NOTES: {rule['notes']}")
+        rules_block.append('\n'.join(lines))
+
+    rules_text = '\n\n'.join(rules_block)
+
+    docs_block = []
+    for i, doc in enumerate(documents, start=1):
+        docs_block.append(f"=== DOCUMENT {i}: {doc['name']} ===\n{doc['text']}")
+    combined_text = '\n\n'.join(docs_block)
+
+    if precedence:
+        hierarchy_section = (
+            "=== DOCUMENT HIERARCHY ===\n"
+            f"A precedence clause was found in: {precedence['source']}\n"
+            f"Precedence clause: \"{precedence['clause']}\"\n"
+            "When documents conflict, apply this clause to determine which document controls."
+        )
+    else:
+        hierarchy_section = (
+            "=== DOCUMENT HIERARCHY ===\n"
+            "No explicit precedence clause was found across these documents. "
+            "Apply the principle of Specific Over General: "
+            "a more specific clause in any document overrides a more general clause in another."
+        )
+
+    comparison_section = ""
+    if prior_findings:
+        comparison_section = (
+            "\n\n=== YEAR-TO-YEAR COMPARISON ===\n"
+            "A prior report exists for this vendor. Where relevant, note if a "
+            "clause that previously failed now complies, or if a previously "
+            "compliant clause has changed or been removed.\n"
+            "Change labels priority order (if multiple apply, use the highest): "
+            "ESCALATED > REGRESSED > NEW_GAP > GAP_FILLED > IMPROVED > NEW_RULE > UNCHANGED"
+        )
+
+    return (
+        f"{hierarchy_section}\n\n"
+        f"You are reviewing {len(documents)} document(s) from the same vendor as one combined compliance picture. "
+        "Analyse all documents together against every rule listed. "
+        "A rule complies if the requirement is satisfied by any document in the set. "
+        "A rule is missing only if the required clause is absent across all documents. "
+        "For each finding, state which document controls and the legal basis for that determination. "
+        "Return a JSON array — one finding object per rule, in rule order. "
+        "Each object must contain exactly these fields: "
+        "rule_id, rule_title, outcome, clause_quoted, clause_source (the document name where the clause was found, or null), "
+        "controlling_document (which document controls for this finding and why), "
+        f"reason, citation, trigger_phrase_matched.{comparison_section}\n\n"
+        f"RULES:\n{rules_text}\n\n"
+        f"VENDOR DOCUMENTS:\n{combined_text}"
+    )
+
+
+def _parse_file(file_path):
+    """Parse a contract file to text based on its extension."""
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == '.pdf':
+        return parsePDF(file_path)
+    if ext in ('.doc', '.docx'):
+        return parseDOC(file_path)
+    raise ValueError(f"Unsupported file type for vendor group analysis: {ext}")
+
+
+def fetch_group_documents(group_id, conn=None):
+    """
+    Fetch and parse all contracts for a vendor group from the database.
+    Returns list of {'contract_id': int, 'name': str, 'text': str}.
+    Opens its own DB connection when conn is None.
+    """
+    close_conn = conn is None
+    if conn is None:
+        conn = create_db_server_connection()
+        if conn is None:
+            raise RuntimeError("Could not connect to database.")
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT contract_id, contract_name, file_path
+            FROM contracts
+            WHERE group_id = %s
+            ORDER BY contract_id
+            """,
+            (group_id,),
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+    finally:
+        if close_conn and conn.is_connected():
+            conn.close()
+
+    if not rows:
+        raise ValueError(f"No contracts found for group_id={group_id}.")
+
+    documents = []
+    for row in rows:
+        file_path = row['file_path']
+        name = row['contract_name'] or os.path.basename(file_path)
+        print(f"  Parsing: {name} ({file_path})")
+        text = _parse_file(file_path)
+        documents.append({
+            'contract_id': row['contract_id'],
+            'name':        name,
+            'text':        text,
+        })
+
+    return documents
+
+
+def analyse_vendor_group(group_id, conn=None, prior_report_id=None):
+    """
+    Fetch all contracts for a vendor group, combine them, and analyse as one
+    unified compliance picture. Returns findings list (one entry per rule).
+    Makes a single Claude call — findings reflect the full vendor document set.
+    If prior_report_id is given, each finding also gets a change_summary field.
+    """
+    print(f"Fetching documents for group_id={group_id} ...", flush=True)
+    documents = fetch_group_documents(group_id, conn=conn)
+
+    precedence     = detect_precedence_clause(documents)
+    prior_findings = fetch_prior_findings(prior_report_id) if prior_report_id else {}
+
+    if precedence:
+        print(f"  Precedence clause found in: {precedence['source']}")
+    else:
+        print("  No precedence clause found — applying Specific Over General.")
+
+    master_prompt = load_master_prompt()
+    rules         = load_rules()
+
+    doc_names = [d['name'] for d in documents]
+    print(f"Loaded {len(rules)} rules. Analysing {len(documents)} document(s): {doc_names}")
+    print("Calling Claude with combined vendor documents and all rules ...", flush=True)
+
+    user_prompt = build_group_user_prompt(rules, documents, precedence, prior_findings or None)
     response    = call_claude(master_prompt, user_prompt)
     findings    = parse_findings(response)
 
     print(f"Received {len(findings)} findings.")
+
+    if prior_findings:
+        compare_findings(findings, prior_findings)
+
     return findings
 
 
@@ -171,6 +465,7 @@ def run_test():
         print(f"Citation: {f.get('citation')}")
         print(f"Trigger:  {f.get('trigger_phrase_matched') or '(none)'}")
 
-
+'''
 if __name__ == '__main__':
     run_test()
+'''

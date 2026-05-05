@@ -307,7 +307,7 @@ def executeQuery(sql, val):
 #                                                                               #
 #################################################################################
 
-def inserPrivilege(name):
+def insertPrivilege(name):
 
     sql = "INSERT INTO privileges (name) VALUES (%s)"
     val = (name,)

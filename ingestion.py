@@ -3,8 +3,8 @@ import os
 import re
 from datetime import datetime
 from dotenv import load_dotenv
-from database import *
-from userHandling import createUser
+from database.database import *
+from userHandling.userHandling import createUser
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,7 +28,7 @@ def load_json():
 def insert_privileges():
     
     for name in ["SYSTEM", "ADMIN", "ANALYST", "VIEWER"]:
-        inserPrivilege(name)
+        insertPrivilege(name)
 
 def insert_users():
 
@@ -184,7 +184,7 @@ def create_rules_snapshot(rule_id_map, approved_by):
 # ---------------------------------------------------------------------------
 
 def run_ingestion():
-    inserPrivilege()
+    insertPrivilege()
     insert_users()
     
     data        = load_json()

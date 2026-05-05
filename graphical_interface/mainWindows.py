@@ -16,7 +16,7 @@ from graphical_interface.graphicalInterface import (
 
 from graphical_interface.documentWindows import documentWindows
 from graphical_interface.contractGroupWindows import contractGroupWindows
-from graphical_interface.createUserFrame import createUserWindows
+from graphical_interface.createUserWindows import createUserWindows
 
 
 homePageTitlelabel = Label(mainFrame, text="Home Page", font=("Arial", 16))

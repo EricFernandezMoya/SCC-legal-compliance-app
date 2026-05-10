@@ -26,8 +26,8 @@ from anthropic import Anthropic
 from dotenv import load_dotenv
 from mysql.connector import Error
 
-from database import create_db_server_connection
-from document_parser import parseDOC, parsePDF
+from database.database import create_db_server_connection
+from report_analysis.document_parser import parseDOC, parsePDF
 
 load_dotenv()
 

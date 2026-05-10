@@ -6,15 +6,15 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from mysql.connector import Error
 from pydantic import BaseModel
 
-from analysis import analyse_contract
-from database import create_db_server_connection
-from document_parser import parseDOC, parsePDF
+from report_analysis.analysis import analyse_contract
+from database.database import create_db_server_connection
+from report_analysis.document_parser import parseDOC, parsePDF
 from legislation_update import (
     analyse_legislation_update,
     apply_accepted_changes,
     save_reviewer_decisions,
 )
-from reports import save_report
+from report_analysis.reports import save_report
 
 app = FastAPI()
 

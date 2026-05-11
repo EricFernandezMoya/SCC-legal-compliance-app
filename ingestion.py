@@ -2,6 +2,7 @@ import json
 import os
 import re
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 from database.database import (
     insertPrivilege,
@@ -24,7 +25,7 @@ from database.database import (
 )
 from userHandling.userHandling import createUser
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_PATH = os.path.join(BASE_DIR, 'report_analysis', 'artifact_b.json')

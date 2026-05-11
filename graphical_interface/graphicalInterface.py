@@ -5,7 +5,10 @@ Sunshine Coast Council branding: primary blue #005B8E, teal #00B5CC.
 
 import json
 import os
+import subprocess
+import sys
 import threading
+import tkinter as tk
 from tkinter import filedialog
 
 import customtkinter as ctk
@@ -35,19 +38,34 @@ WARNING   = "#F59E0B"
 ERROR     = "#EF4444"
 NAV_HOVER = "#EFF6FF"
 
+# ── Rule categories (display order matches spec) ──────────────────────────────
+_RULE_CATS = [
+    ("CAT1", "C1 — Procurement & Governance"),
+    ("CAT2", "C2 — Data & Privacy"),
+    ("CAT3", "C3 — Cybersecurity"),
+    ("CAT4", "C4 — Intellectual Property"),
+    ("CAT5", "C5 — Service Levels & Exit"),
+    ("CAT6", "C6 — Work Health & Safety"),
+    ("CAT7", "C7 — Legal & Liability"),
+]
+
 # ── Paths ────────────────────────────────────────────────────────────────────
 _BASE         = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_LOGO_PATH    = os.path.join(_BASE, "logo (1).avif")
-_SETTINGS_FILE = os.path.join(_BASE, ".scc_settings.json")
+_LOGO_PATH    = os.path.join(os.path.dirname(_BASE), "sunshine-coast-council-vector-logo.png")
+_SETTINGS_FILE   = os.path.join(_BASE, ".scc_settings.json")
+_ARTIFACT_B_PATH = os.path.join(_BASE, "artifact_b.json")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _load_logo(w=176, h=65):
+def _load_logo(target_w=200):
     try:
         from PIL import Image
-        img = Image.open(_LOGO_PATH)
-        return ctk.CTkImage(img, size=(w, h))
+        img = Image.open(_LOGO_PATH).convert("RGBA")
+        orig_w, orig_h = img.size
+        target_h = max(1, round(orig_h * target_w / orig_w))
+        img = img.resize((target_w, target_h), Image.LANCZOS)
+        return ctk.CTkImage(img, size=(target_w, target_h))
     except Exception:
         return None
 
@@ -76,12 +94,12 @@ def _make_card(parent, padx=24, pady=24, **kw):
     return shadow, inner
 
 
-def _section_title(parent, text, pady=(0, 20)):
+def _section_title(parent, text, pady=(0, 20), padx=(32, 0)):
     ctk.CTkLabel(
         parent, text=text,
         font=ctk.CTkFont(size=24, weight="bold"),
         text_color=TXT,
-    ).pack(anchor="w", pady=pady)
+    ).pack(anchor="w", pady=pady, padx=padx)
 
 
 def _label(parent, text, size=13, colour=TXT2, **kw):
@@ -109,7 +127,8 @@ def _btn(parent, text, command, fg=PRIMARY, hover=TEAL, width=None, height=40, *
     )
     if width:
         kwargs["width"] = width
-    return ctk.CTkButton(parent, **kwargs, **kw)
+    kwargs.update(kw)
+    return ctk.CTkButton(parent, **kwargs)
 
 
 def _ghost_btn(parent, text, command, height=36, **kw):
@@ -178,12 +197,23 @@ class SCCApp(ctk.CTk):
         self._settings  = _load_settings()
         self._logo_img  = _load_logo()
         self._user      = "User"
+        self._privilege = ""
 
         # per-page state
-        self._analyse_file  = None
-        self._leg_file      = None
-        self._leg_review_id = None
-        self._leg_decisions = []
+        self._analyse_file        = None
+        self._leg_file            = None
+        self._leg_review_id       = None
+        self._leg_decisions       = []
+        self._a_vendors_data      = []
+        self._a_selected_group_id = None
+        self._a_compare_var       = None   # BooleanVar, created in _build_analyse
+        self._a_dropdown_win      = None
+        self._a_doc_count         = 0
+
+        # Reports page state
+        self._r_vendors_data      = []
+        self._r_all_vendor_names  = []
+        self._r_selected_group_id = None
 
         self._build_login()
 
@@ -210,13 +240,15 @@ class SCCApp(ctk.CTk):
         wrap = ctk.CTkFrame(self._login_page, fg_color=BG)
         wrap.place(relx=0.5, rely=0.5, anchor="center")
 
-        # logo or wordmark
+        # logo
         if self._logo_img:
-            ctk.CTkLabel(wrap, image=self._logo_img, text="").pack(pady=(0, 28))
-        else:
-            ctk.CTkLabel(wrap, text="SCC Compliance Tool",
-                         font=ctk.CTkFont(size=26, weight="bold"),
-                         text_color=PRIMARY).pack(pady=(0, 28))
+            ctk.CTkLabel(wrap, image=self._logo_img, text="",
+                         fg_color=BG).pack(pady=(0, 12))
+
+        # title
+        ctk.CTkLabel(wrap, text="Software Compliance Tool",
+                     font=ctk.CTkFont(size=28, weight="bold"),
+                     text_color="#000000").pack(pady=(0, 28))
 
         sh, card_f = _make_card(wrap)
         sh.pack()
@@ -270,7 +302,11 @@ class SCCApp(ctk.CTk):
             self._li_pass.delete(0, "end")
             return
 
+        from database.database import selectPrivileges
         self._user = u
+        privilege_id = rows[0][4]
+        all_privs = selectPrivileges()
+        self._privilege = next((r[1] for r in all_privs if r[0] == privilege_id), "")
         self._li_user.delete(0, "end")
         self._li_pass.delete(0, "end")
         self._li_err.pack_forget()
@@ -286,17 +322,18 @@ class SCCApp(ctk.CTk):
         self._root_frame = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
         self._root_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
 
+        self._pages    = {}
+        self._nav_btns = {}
+
         self._build_sidebar()
 
         self._content = ctk.CTkFrame(self._root_frame, fg_color=BG, corner_radius=0)
         self._content.pack(side="left", fill="both", expand=True)
 
-        self._pages    = {}
-        self._nav_btns = {}
-
         self._build_dashboard()
         self._build_analyse()
         self._build_reports()
+        self._build_contracts()
         self._build_legislation()
         self._build_settings()
 
@@ -321,7 +358,8 @@ class SCCApp(ctk.CTk):
         logo_area.pack(fill="x", padx=18, pady=(24, 16))
 
         if self._logo_img:
-            ctk.CTkLabel(logo_area, image=self._logo_img, text="").pack(anchor="w")
+            ctk.CTkLabel(logo_area, image=self._logo_img, text="",
+                         fg_color=SIDEBAR).pack(anchor="w")
         else:
             ctk.CTkLabel(logo_area, text="SCC",
                          font=ctk.CTkFont(size=22, weight="bold"),
@@ -337,13 +375,18 @@ class SCCApp(ctk.CTk):
         nav = ctk.CTkFrame(col, fg_color=SIDEBAR)
         nav.pack(fill="x", padx=8)
 
+        is_admin = self._privilege == "ADMIN"
         items = [
-            ("dashboard",   "🏠  Dashboard"),
-            ("analyse",     "📄  Analyse Contract"),
-            ("reports",     "📊  Reports"),
-            ("legislation", "⚖️  Legislation Update"),
-            ("settings",    "⚙️  Settings"),
+            ("dashboard",   "Dashboard"),
+            ("analyse",     "Analyse Contract"),
+            ("reports",     "Reports"),
+            ("contracts",   "Contracts"),
         ]
+        if is_admin:
+            items += [
+                ("legislation", "Legislation Update"),
+                ("settings",    "Settings"),
+            ]
         for key, label in items:
             b = ctk.CTkButton(
                 nav, text=label, anchor="w", height=44, corner_radius=8,
@@ -367,6 +410,12 @@ class SCCApp(ctk.CTk):
         _label(ub, "Compliance Officer", size=11).pack(padx=14, pady=(0, 10), anchor="w")
 
     def _go(self, key):
+        if key == "analyse":
+            self._load_vendors()
+        if key == "reports":
+            self._load_report_vendors()
+        if key == "contracts":
+            self._load_contracts_directory()
         for k, b in self._nav_btns.items():
             if k == key:
                 b.configure(fg_color=PRIMARY, text_color="white", hover_color=TEAL)
@@ -413,19 +462,18 @@ class SCCApp(ctk.CTk):
         # Stat cards ─────────────────────────────────────────────────────────
         stats_outer = ctk.CTkFrame(page, fg_color=BG)
         stats_outer.pack(fill="x", padx=p, pady=(20, 0))
-        for i in range(3):
+        for i in range(2):
             stats_outer.columnconfigure(i, weight=1)
 
         stat_defs = [
-            ("📋", "Total Reports Run", "—",  TXT),
-            ("📏", "Rules Monitored",   "31", PRIMARY),
-            ("🗓",  "Last Analysis",     "—",  TEAL),
+            ("📋", "Total Reports Run", "—", TXT),
+            ("🗓",  "Last Analysis",     "—", TEAL),
         ]
         self._dash_lbl = {}
         for col, (icon, lbl, val, colour) in enumerate(stat_defs):
             sh2, sc = _make_card(stats_outer)
             sh2.grid(row=0, column=col, sticky="ew",
-                     padx=(0, 16) if col < 2 else 0)
+                     padx=(0, 16) if col < 1 else 0)
             inner = ctk.CTkFrame(sc, fg_color=CARD)
             inner.pack(fill="both", padx=20, pady=20)
             _label(inner, icon, size=30).pack(anchor="w")
@@ -450,12 +498,13 @@ class SCCApp(ctk.CTk):
         qr = ctk.CTkFrame(inner3, fg_color=CARD)
         qr.pack(anchor="w")
 
-        _btn(qr, "📄  Analyse a Contract",
+        _btn(qr, "Analyse a Contract",
              lambda: self._go("analyse"), height=40).pack(side="left", padx=(0, 12))
-        _ghost_btn(qr, "📊  View Reports",
+        _ghost_btn(qr, "View Reports",
                    lambda: self._go("reports"), height=40).pack(side="left", padx=(0, 12))
-        _ghost_btn(qr, "⚖️  Legislation Update",
-                   lambda: self._go("legislation"), height=40).pack(side="left")
+        if self._privilege == "ADMIN":
+            _ghost_btn(qr, "Legislation Update",
+                       lambda: self._go("legislation"), height=40).pack(side="left")
 
     # ═════════════════════════════════════════════════════════════════════════
     # ANALYSE CONTRACT
@@ -483,28 +532,103 @@ class SCCApp(ctk.CTk):
                      font=ctk.CTkFont(size=16, weight="bold"),
                      text_color=TXT).pack(anchor="w", pady=(0, 16))
 
-        # file upload
+        # ── Vendor autocomplete
+        ctk.CTkLabel(form, text="Vendor",
+                     font=ctk.CTkFont(size=14, weight="bold"),
+                     text_color=TXT).pack(anchor="w", pady=(0, 6))
+
+        _label(form, "Vendor Name  (type to search existing or enter new)").pack(anchor="w", pady=(0, 4))
+        self._a_vendor_entry = _entry(form, "e.g. Zoom", width=360)
+        self._a_vendor_entry.pack(anchor="w", pady=(0, 20))
+        self._a_vendor_entry.bind("<KeyRelease>", self._on_vendor_type)
+        self._a_vendor_entry.bind("<FocusOut>",
+                                  lambda _e: self.after(200, self._hide_vendor_dropdown))
+
+        ctk.CTkFrame(form, height=1, fg_color=BORDER, corner_radius=0).pack(
+            fill="x", pady=(0, 20)
+        )
+
+        # ── File upload
         self._a_file_lbl = _upload_box(
             form,
             "Click to browse or drag and drop",
             self._browse_contract,
         )
+        self._a_clear_file_row = ctk.CTkFrame(form, fg_color=CARD)
+        _ghost_btn(self._a_clear_file_row, "× Clear file",
+                   self._clear_contract_file, height=28).pack(anchor="w")
+        # not packed until a file is selected
 
-        # fields
-        fr = ctk.CTkFrame(form, fg_color=CARD)
-        fr.pack(fill="x", pady=(0, 20))
-        fr.columnconfigure(0, weight=1)
-        fr.columnconfigure(1, weight=1)
+        # ── URL input
+        _label(form, "Or add document URLs", size=13).pack(anchor="w", pady=(0, 4))
+        _label(form,
+               "Paste one URL per line — the backend will fetch and extract text from each",
+               size=11, colour=TXT2).pack(anchor="w", pady=(0, 6))
+        self._a_urls_box = ctk.CTkTextbox(
+            form, height=80, corner_radius=8,
+            fg_color="white", border_width=1, border_color=BORDER,
+            text_color=TXT, font=ctk.CTkFont(size=12),
+        )
+        self._a_urls_box.pack(fill="x", pady=(0, 20))
+        self._a_urls_box.bind("<KeyRelease>", lambda _e: self._update_doc_count())
 
-        _label(fr, "Contract ID  *").grid(row=0, column=0, sticky="w", pady=(0, 4))
-        self._a_cid = _entry(fr, "e.g. 42")
-        self._a_cid.grid(row=1, column=0, sticky="ew", padx=(0, 12))
+        ctk.CTkFrame(form, height=1, fg_color=BORDER, corner_radius=0).pack(
+            fill="x", pady=(0, 20)
+        )
 
-        _label(fr, "Prior Report ID  (optional)").grid(row=0, column=1, sticky="w", pady=(0, 4))
-        self._a_prior = _entry(fr, "For year-on-year comparison")
-        self._a_prior.grid(row=1, column=1, sticky="ew")
+        # ── Doc-count-conditional fields
+        _doc_fields = ctk.CTkFrame(form, fg_color=CARD)
+        _doc_fields.pack(fill="x")
+        self._a_doc_fields_container = _doc_fields
 
-        # run button
+        self._a_multi_doc_notice = ctk.CTkLabel(
+            _doc_fields,
+            text="Multi-document analysis — this will be saved as a vendor group report",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=TEAL, fg_color="#EFF9FB", corner_radius=8,
+        )
+
+        self._a_single_doc_frame = ctk.CTkFrame(_doc_fields, fg_color=CARD)
+        self._a_single_doc_frame.pack(fill="x")   # shown by default
+
+        _label(self._a_single_doc_frame, "Contract Name  *").pack(anchor="w", pady=(0, 4))
+        self._a_contract_name = _entry(self._a_single_doc_frame,
+                                       "e.g. Zoom Privacy Policy 2025", width=420)
+        self._a_contract_name.pack(anchor="w", pady=(0, 16))
+
+        dates_row = ctk.CTkFrame(self._a_single_doc_frame, fg_color=CARD)
+        dates_row.pack(fill="x", pady=(0, 16))
+        dates_row.columnconfigure(0, weight=1)
+        dates_row.columnconfigure(1, weight=1)
+
+        _label(dates_row, "Start Date  (optional, YYYY-MM-DD)").grid(
+            row=0, column=0, sticky="w", pady=(0, 4))
+        self._a_start_date = _entry(dates_row, "2025-01-01")
+        self._a_start_date.grid(row=1, column=0, sticky="ew", padx=(0, 12))
+
+        _label(dates_row, "End Date  (optional, YYYY-MM-DD)").grid(
+            row=0, column=1, sticky="w", pady=(0, 4))
+        self._a_end_date = _entry(dates_row, "2025-12-31")
+        self._a_end_date.grid(row=1, column=1, sticky="ew")
+
+        # ── Compare with previous report checkbox
+        self._a_compare_var = ctk.BooleanVar(value=False)
+        cmp_row = ctk.CTkFrame(form, fg_color=CARD)
+        cmp_row.pack(anchor="w", pady=(0, 20))
+        ctk.CTkCheckBox(
+            cmp_row,
+            text="Compare with previous report",
+            variable=self._a_compare_var,
+            checkbox_width=20, checkbox_height=20,
+            corner_radius=4,
+            fg_color=PRIMARY, hover_color=TEAL,
+            font=ctk.CTkFont(size=13), text_color=TXT,
+        ).pack(side="left")
+        _label(cmp_row,
+               "  — automatically finds the most recent report for this vendor",
+               size=11, colour=TXT2).pack(side="left")
+
+        # ── Run button
         br = ctk.CTkFrame(form, fg_color=CARD)
         br.pack(anchor="w")
 
@@ -531,22 +655,108 @@ class SCCApp(ctk.CTk):
         )
         if path:
             self._analyse_file = path
-            self._a_file_lbl.configure(
-                text=os.path.basename(path), text_color=PRIMARY,
-            )
+            self._a_file_lbl.configure(text=os.path.basename(path), text_color=PRIMARY)
+            self._a_clear_file_row.pack(anchor="w", pady=(0, 8))
+            self._update_doc_count()
+
+    def _clear_contract_file(self):
+        self._analyse_file = None
+        self._a_file_lbl.configure(text="No file selected", text_color=TXT2)
+        self._a_clear_file_row.pack_forget()
+        self._update_doc_count()
+
+    def _load_vendors(self):
+        def _ok(data):
+            self._a_vendors_data = data
+        self._api("GET", "/vendors", _ok, lambda _: None)
+
+    def _on_vendor_type(self, event=None):
+        text = self._a_vendor_entry.get().strip()
+        self._a_selected_group_id = None
+        if len(text) < 2:
+            self._hide_vendor_dropdown()
+            return
+        matches = [v["group_name"] for v in self._a_vendors_data
+                   if text.lower() in v["group_name"].lower()]
+        self._show_vendor_dropdown(matches)
+
+    def _show_vendor_dropdown(self, matches):
+        self._hide_vendor_dropdown()
+        if not matches:
+            return
+        n   = min(len(matches), 6)
+        e   = self._a_vendor_entry
+        x   = e.winfo_rootx()
+        y   = e.winfo_rooty() + e.winfo_height()
+        w   = e.winfo_width()
+        win = tk.Toplevel(self)
+        win.overrideredirect(True)
+        win.geometry(f"{w}x{n * 32}+{x}+{y}")
+        win.configure(bg=CARD)
+        win.lift()
+        win.wm_attributes("-topmost", True)
+        lb = tk.Listbox(
+            win, bg=CARD, fg=TXT, font=("Helvetica", 13),
+            selectbackground=PRIMARY, selectforeground="white",
+            borderwidth=1, highlightthickness=0,
+            activestyle="dotbox", relief="flat",
+        )
+        lb.pack(fill="both", expand=True)
+        for name in matches[:6]:
+            lb.insert("end", name)
+        def _pick(evt=None):
+            sel = lb.curselection()
+            if not sel:
+                return
+            name = lb.get(sel[0])
+            self._a_vendor_entry.delete(0, "end")
+            self._a_vendor_entry.insert(0, name)
+            for v in self._a_vendors_data:
+                if v["group_name"] == name:
+                    self._a_selected_group_id = v["group_id"]
+                    break
+            self._hide_vendor_dropdown()
+        lb.bind("<ButtonRelease-1>", _pick)
+        lb.bind("<Return>", _pick)
+        self._a_dropdown_win = win
+
+    def _hide_vendor_dropdown(self):
+        if self._a_dropdown_win is not None:
+            try:
+                self._a_dropdown_win.destroy()
+            except Exception:
+                pass
+            self._a_dropdown_win = None
+
+    def _update_doc_count(self):
+        file_count = 1 if self._analyse_file else 0
+        urls_text  = self._a_urls_box.get("0.0", "end-1c").strip()
+        url_count  = len([u for u in urls_text.splitlines() if u.strip()])
+        self._a_doc_count = file_count + url_count
+        if self._a_doc_count > 1:
+            self._a_single_doc_frame.pack_forget()
+            self._a_multi_doc_notice.pack(fill="x", pady=(0, 16))
+        else:
+            self._a_multi_doc_notice.pack_forget()
+            self._a_single_doc_frame.pack(fill="x")
 
     def _run_analysis(self):
-        cid = self._a_cid.get().strip()
-        if not cid:
+        urls_text = self._a_urls_box.get("0.0", "end-1c").strip()
+        urls      = [u.strip() for u in urls_text.splitlines() if u.strip()]
+
+        is_multi      = self._a_doc_count > 1
+        contract_name = ""
+        if not is_multi:
+            contract_name = self._a_contract_name.get().strip()
+            if not contract_name:
+                self._show_err(self._a_err, self._a_err_lbl, "Please enter a Contract Name.")
+                return
+
+        if not self._analyse_file and not urls:
             self._show_err(self._a_err, self._a_err_lbl,
-                           "Please enter a Contract ID.")
-            return
-        if not self._analyse_file:
-            self._show_err(self._a_err, self._a_err_lbl,
-                           "Please select a contract file.")
+                           "Please select a contract file or enter at least one URL.")
             return
 
-        prior = self._a_prior.get().strip()
         self._a_err.pack_forget()
         self._a_btn.configure(state="disabled")
         self._a_spin.pack(side="left", padx=12)
@@ -557,7 +767,6 @@ class SCCApp(ctk.CTk):
             self._a_spin.pack_forget()
             findings  = data.get("findings", [])
             report_id = data.get("report_id")
-
             self._a_res_title.configure(
                 text=f"Results — Report #{report_id}  ·  {len(findings)} findings"
             )
@@ -566,8 +775,6 @@ class SCCApp(ctk.CTk):
             for f in findings:
                 self._finding_card(self._a_findings, f)
             self._a_results.pack(fill="x")
-
-            # update dashboard last-analysis date
             from datetime import date
             self._dash_lbl.get("Last Analysis", ctk.CTkLabel(self, text="")
                                ).configure(text=date.today().strftime("%d %b %Y"))
@@ -577,18 +784,39 @@ class SCCApp(ctk.CTk):
             self._a_spin.pack_forget()
             self._show_err(self._a_err, self._a_err_lbl, msg)
 
-        with open(self._analyse_file, "rb") as fh:
-            data = {"contract_id": cid}
-            if prior:
-                data["prior_report_id"] = prior
-            files = {"file": (os.path.basename(self._analyse_file), fh.read())}
+        vendor_name_text = self._a_vendor_entry.get().strip()
+        start_date       = self._a_start_date.get().strip() if not is_multi else ""
+        end_date         = self._a_end_date.get().strip()   if not is_multi else ""
+        compare          = self._a_compare_var.get()
 
         def _thread():
             try:
-                url = self._settings.get("api_url", "http://localhost:8000") + "/analyse"
-                r = requests.post(url, files=files, data=data, timeout=120)
-                r.raise_for_status()
-                self.after(0, lambda: _ok(r.json()))
+                api_url   = self._settings.get("api_url", "http://localhost:8000") + "/analyse"
+                form_data: Dict[str, str] = {}
+                if contract_name:
+                    form_data["contract_name"] = contract_name
+                if self._a_selected_group_id is not None:
+                    form_data["group_id"] = str(self._a_selected_group_id)
+                elif vendor_name_text:
+                    form_data["vendor_name"] = vendor_name_text
+                if start_date:
+                    form_data["period_start"] = start_date
+                if end_date:
+                    form_data["period_end"] = end_date
+                if compare:
+                    form_data["compare_prior"] = "true"
+                if urls:
+                    form_data["urls"] = "\n".join(urls)
+
+                if self._analyse_file:
+                    with open(self._analyse_file, "rb") as fh:
+                        files = {"file": (os.path.basename(self._analyse_file), fh.read())}
+                    resp = requests.post(api_url, files=files, data=form_data, timeout=180)
+                else:
+                    resp = requests.post(api_url, data=form_data, timeout=180)
+
+                resp.raise_for_status()
+                self.after(0, lambda: _ok(resp.json()))
             except Exception as e:
                 self.after(0, lambda: _err(str(e)))
 
@@ -669,12 +897,25 @@ class SCCApp(ctk.CTk):
         sr = ctk.CTkFrame(sc_f, fg_color=CARD)
         sr.pack(fill="x", padx=20, pady=16)
 
-        self._r_search = _entry(sr, "Search by Contract ID…", width=280)
-        self._r_search.pack(side="left")
-        self._r_search.bind("<Return>", lambda _e: self._search_reports())
+        # live-filter text input
+        self._r_vendor_filter = _entry(sr, "Search by vendor name…", width=220)
+        self._r_vendor_filter.pack(side="left")
+        self._r_vendor_filter.bind("<KeyRelease>", lambda _e: self._r_filter_vendors())
+
+        # vendor dropdown — populated on page load
+        self._r_vendor_combo = ctk.CTkComboBox(
+            sr, values=[], width=260, height=40,
+            corner_radius=8, fg_color="white", border_color=BORDER,
+            text_color=TXT, button_color=PRIMARY, button_hover_color=TEAL,
+            command=self._on_report_vendor_selected,
+        )
+        self._r_vendor_combo.set("Select vendor…")
+        self._r_vendor_combo.pack(side="left", padx=(8, 0))
 
         _btn(sr, "Search", self._search_reports,
              height=40, width=100).pack(side="left", padx=(12, 0))
+        _ghost_btn(sr, "Show All", self._r_show_all,
+                   height=40).pack(side="left", padx=(8, 0))
 
         self._r_spin = _label(sr, "  Loading…", colour=TXT2)
 
@@ -682,10 +923,54 @@ class SCCApp(ctk.CTk):
         self._r_list = ctk.CTkScrollableFrame(page, fg_color=BG, corner_radius=0)
         self._r_list.pack(fill="both", expand=True, padx=p, pady=(0, p))
 
+    def _load_report_vendors(self):
+        def _ok(data):
+            self._r_vendors_data     = data
+            names = [v["group_name"] for v in data]
+            self._r_all_vendor_names = names
+            self._r_vendor_combo.configure(values=names)
+        self._api("GET", "/vendors/list", _ok, lambda _: None)
+
+    def _r_filter_vendors(self):
+        q = self._r_vendor_filter.get().strip().lower()
+        if not q:
+            filtered = self._r_all_vendor_names
+        else:
+            filtered = [n for n in self._r_all_vendor_names if q in n.lower()]
+        self._r_vendor_combo.configure(values=filtered)
+        if filtered:
+            self._r_vendor_combo.set(filtered[0])
+        else:
+            self._r_vendor_combo.set("")
+
+    def _on_report_vendor_selected(self, choice):
+        for v in self._r_vendors_data:
+            if v["group_name"] == choice:
+                self._r_selected_group_id = v["group_id"]
+                self._search_reports()
+                return
+        self._r_selected_group_id = None
+
+    def _r_show_all(self):
+        self._r_vendor_filter.delete(0, "end")
+        self._r_vendor_combo.configure(values=self._r_all_vendor_names)
+        self._r_vendor_combo.set("Select vendor…")
+        self._r_selected_group_id = None
+        for w in self._r_list.winfo_children():
+            w.destroy()
+        self._r_err.pack_forget()
+
     def _search_reports(self):
-        cid = self._r_search.get().strip()
-        if not cid:
-            self._show_err(self._r_err, self._r_err_lbl, "Enter a Contract ID.")
+        gid = self._r_selected_group_id
+        if gid is None:
+            choice = self._r_vendor_combo.get().strip()
+            for v in self._r_vendors_data:
+                if v["group_name"] == choice:
+                    gid = v["group_id"]
+                    self._r_selected_group_id = gid
+                    break
+        if gid is None:
+            self._show_err(self._r_err, self._r_err_lbl, "Please select a vendor.")
             return
         self._r_err.pack_forget()
         self._r_spin.pack(side="left", padx=12)
@@ -696,7 +981,7 @@ class SCCApp(ctk.CTk):
                 w.destroy()
             reports = data.get("reports", [])
             if not reports:
-                _label(self._r_list, "No reports found for this contract.",
+                _label(self._r_list, "No reports found for this vendor.",
                        size=14, colour=TXT2).pack(pady=32)
                 return
             for r in reports:
@@ -706,7 +991,7 @@ class SCCApp(ctk.CTk):
             self._r_spin.pack_forget()
             self._show_err(self._r_err, self._r_err_lbl, msg)
 
-        self._api("GET", f"/reports/contract/{cid}", _ok, _err)
+        self._api("GET", f"/vendors/{gid}/reports", _ok, _err)
 
     def _report_card(self, parent, r):
         sh = ctk.CTkFrame(parent, fg_color=SHADOW, corner_radius=14)
@@ -717,34 +1002,38 @@ class SCCApp(ctk.CTk):
         c = ctk.CTkFrame(inner, fg_color=CARD)
         c.pack(fill="both", padx=20, pady=16)
 
-        # top row
+        # top row — vendor name as primary title
         top = ctk.CTkFrame(c, fg_color=CARD)
         top.pack(fill="x")
-        ctk.CTkLabel(top, text=f"Report  #{r.get('report_id', '?')}",
+        vendor_title = r.get("group_name") or r.get("contract_name") or "Unknown Vendor"
+        ctk.CTkLabel(top, text=vendor_title,
                      font=ctk.CTkFont(size=15, weight="bold"),
                      text_color=TXT).pack(side="left")
 
-        status = (r.get("compliance_status") or "pending_review").lower()
-        if "compliant" == status:
-            sf, sc_fg, st = "#F0FDF4", SUCCESS, "Compliant"
-        elif "non" in status:
-            sf, sc_fg, st = "#FEF2F2", ERROR, "Non-compliant"
-        else:
-            sf, sc_fg, st = "#FFFBEB", WARNING, "Pending Review"
-
-        _badge(top, st, sc_fg, sf).pack(side="right")
-
-        # details
+        # details — formatted date · report id · analysis type
         dt = ctk.CTkFrame(c, fg_color=CARD)
         dt.pack(fill="x", pady=(6, 12))
-        created = str(r.get("created_at", ""))[:10]
-        _label(dt, f"🗓  {created}  ·  Contract #{r.get('contract_id','?')}",
-               size=12).pack(side="left")
+        raw_date = str(r.get("created_at", ""))[:10]
+        try:
+            from datetime import datetime as _dt
+            _d = _dt.strptime(raw_date, "%Y-%m-%d")
+            formatted_date = _d.strftime("%-d %B %Y")
+        except Exception:
+            formatted_date = raw_date
+        contract_name = r.get("contract_name") or ""
+        analysis_type = "Group Analysis" if "Group Analysis" in contract_name else "Single Document"
+        detail = f"{formatted_date}  ·  Report #{r.get('report_id', '?')}  ·  {analysis_type}"
+        _label(dt, detail, size=12, colour=TXT2).pack(side="left")
 
         rid = r.get("report_id")
-        _ghost_btn(c, "View Details →",
+        btn_row = ctk.CTkFrame(c, fg_color=CARD)
+        btn_row.pack(anchor="w")
+        _ghost_btn(btn_row, "View Details →",
                    lambda r=rid: self._report_detail(r),
-                   height=32).pack(anchor="w")
+                   height=32).pack(side="left", padx=(0, 8))
+        _btn(btn_row, "⬇  Download .docx",
+             lambda r=rid: self._download_docx(r),
+             height=32, width=170).pack(side="left")
 
     def _report_detail(self, report_id):
         win = ctk.CTkToplevel(self)
@@ -775,7 +1064,7 @@ class SCCApp(ctk.CTk):
             for risk in risks:
                 self._finding_card(scroll, {
                     "rule_id":      risk.get("rule_name", "?"),
-                    "rule_title":   risk.get("rule_description", ""),
+                    "rule_title":   risk.get("rule_title", ""),
                     "outcome":      risk.get("risk_name", ""),
                     "clause_quoted": risk.get("finding_text", ""),
                     "reason":       risk.get("description", ""),
@@ -795,12 +1084,56 @@ class SCCApp(ctk.CTk):
         self._pages["legislation"] = page
 
         p = 32
-        _section_title(page, "Legislation Update", pady=(p, 16))
+        _section_title(page, "Legislation", pady=(p, 12))
 
-        self._l_err, self._l_err_lbl = _err_banner(page)
+        # ── Subtab bar ────────────────────────────────────────────────────────
+        tab_bar = ctk.CTkFrame(page, fg_color=BG)
+        tab_bar.pack(fill="x", padx=p, pady=(0, 20))
 
-        # ── Upload card
-        sh, uc = _make_card(page)
+        self._leg_tab_btns = {}
+        for key, label in [("upload", "Legislation Update"), ("rules", "Rules Library")]:
+            b = ctk.CTkButton(
+                tab_bar, text=label, height=38, corner_radius=8,
+                fg_color=PRIMARY if key == "upload" else "transparent",
+                hover_color=TEAL,
+                text_color="white" if key == "upload" else PRIMARY,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                border_width=2, border_color=PRIMARY,
+                command=lambda k=key: self._leg_show_tab(k),
+            )
+            b.pack(side="left", padx=(0, 8))
+            self._leg_tab_btns[key] = b
+
+        # ── Panes (one per subtab) ────────────────────────────────────────────
+        self._leg_upload_pane = ctk.CTkFrame(page, fg_color=BG, corner_radius=0)
+        self._leg_rules_pane  = ctk.CTkFrame(page, fg_color=BG, corner_radius=0)
+
+        self._build_leg_upload(self._leg_upload_pane, p)
+        self._build_leg_rules(self._leg_rules_pane, p)
+
+        # Show upload tab by default
+        self._leg_upload_pane.pack(fill="both", expand=True)
+
+    def _leg_show_tab(self, key):
+        for k, btn in self._leg_tab_btns.items():
+            if k == key:
+                btn.configure(fg_color=PRIMARY, text_color="white", hover_color=TEAL)
+            else:
+                btn.configure(fg_color="transparent", text_color=PRIMARY, hover_color=TEAL)
+        self._leg_upload_pane.pack_forget()
+        self._leg_rules_pane.pack_forget()
+        if key == "upload":
+            self._leg_upload_pane.pack(fill="both", expand=True)
+        else:
+            self._leg_rules_pane.pack(fill="both", expand=True)
+            self._rl_load_rules()
+
+    # ── Legislation Upload pane ───────────────────────────────────────────────
+
+    def _build_leg_upload(self, pane, p):
+        self._l_err, self._l_err_lbl = _err_banner(pane)
+
+        sh, uc = _make_card(pane)
         sh.pack(fill="x", padx=p, pady=(0, 20))
         form = ctk.CTkFrame(uc, fg_color=CARD)
         form.pack(fill="both", padx=24, pady=24)
@@ -828,8 +1161,7 @@ class SCCApp(ctk.CTk):
         self._l_btn.pack(side="left")
         self._l_spin = _label(br, "  Analysing…", colour=TXT2)
 
-        # ── Proposed changes section (hidden until upload)
-        self._l_changes = ctk.CTkFrame(page, fg_color=BG, corner_radius=0)
+        self._l_changes = ctk.CTkFrame(pane, fg_color=BG, corner_radius=0)
         self._l_ch_title = ctk.CTkLabel(
             self._l_changes, text="Proposed Changes",
             font=ctk.CTkFont(size=18, weight="bold"), text_color=TXT,
@@ -845,6 +1177,338 @@ class SCCApp(ctk.CTk):
             self._submit_decisions,
             fg=SUCCESS, hover="#16A34A", height=44, width=250,
         )
+
+    # ── Rules Library pane ────────────────────────────────────────────────────
+
+    def _build_leg_rules(self, pane, p):
+        self._rl_all_rules = []
+
+        top = ctk.CTkFrame(pane, fg_color=BG)
+        top.pack(fill="x", padx=p, pady=(0, 16))
+
+        self._rl_search = _entry(top, "Search rules…", width=350)
+        self._rl_search.pack(side="left")
+        self._rl_search.bind("<KeyRelease>", lambda _e: self._rl_filter())
+
+        if self._privilege == "ADMIN":
+            _btn(top, "＋  Add Rule", self._rl_open_add,
+                 height=40, width=150).pack(side="right")
+
+        self._rl_err, self._rl_err_lbl = _err_banner(pane)
+
+        self._rl_spin = _label(pane, "Loading rules…", size=14, colour=TXT2)
+
+        self._rl_list = ctk.CTkFrame(pane, fg_color=BG, corner_radius=0)
+        self._rl_list.pack(fill="both", expand=True, padx=p, pady=(0, p))
+
+    def _rl_load_rules(self):
+        for w in self._rl_list.winfo_children():
+            w.destroy()
+        self._rl_err.pack_forget()
+        self._rl_spin.pack(pady=16)
+
+        def _ok(data):
+            self._rl_spin.pack_forget()
+            self._rl_all_rules = data.get("rules", [])
+            self._rl_filter()
+
+        def _err(msg):
+            self._rl_spin.pack_forget()
+            self._show_err(self._rl_err, self._rl_err_lbl, msg)
+
+        def _load():
+            try:
+                with open(_ARTIFACT_B_PATH, encoding="utf-8") as fh:
+                    data = json.load(fh)
+                self.after(0, lambda: _ok(data))
+            except Exception as e:
+                self.after(0, lambda: _err(str(e)))
+
+        threading.Thread(target=_load, daemon=True).start()
+
+    def _rl_filter(self):
+        q = self._rl_search.get().strip().lower()
+        if not q:
+            filtered = self._rl_all_rules
+        else:
+            filtered = [
+                r for r in self._rl_all_rules
+                if q in (r.get("id") or "").lower()
+                or q in (r.get("title") or "").lower()
+                or q in (r.get("check") or "").lower()
+                or q in (r.get("citation") or "").lower()
+                or q in (r.get("comply_requires") or "").lower()
+            ]
+        self._rl_render(filtered)
+
+    def _rl_render(self, rules):
+        for w in self._rl_list.winfo_children():
+            w.destroy()
+
+        if not rules:
+            _label(self._rl_list, "No rules found.", size=14, colour=TXT2).pack(pady=24)
+            return
+
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for r in rules:
+            groups[r.get("category", "CAT1")].append(r)
+
+        for cat_code, cat_label in _RULE_CATS:
+            cat_rules = groups.get(cat_code, [])
+            if not cat_rules:
+                continue
+            self._rl_cat_section(self._rl_list, cat_label, cat_rules)
+
+    def _rl_cat_section(self, parent, cat_label, rules):
+        sect = ctk.CTkFrame(parent, fg_color=BG, corner_radius=0)
+        sect.pack(fill="x", pady=(0, 12))
+
+        body = ctk.CTkFrame(sect, fg_color=BG, corner_radius=0)
+
+        toggle_state = [True]
+
+        def _toggle():
+            if toggle_state[0]:
+                body.pack_forget()
+                toggle_state[0] = False
+                hdr.configure(text=f"▶  {cat_label}  ({len(rules)})")
+            else:
+                body.pack(fill="x", pady=(4, 0))
+                toggle_state[0] = True
+                hdr.configure(text=f"▼  {cat_label}  ({len(rules)})")
+
+        hdr = ctk.CTkButton(
+            sect,
+            text=f"▼  {cat_label}  ({len(rules)})",
+            anchor="w",
+            fg_color="#EBF5FB",
+            hover_color="#D4E6F1",
+            text_color=TXT,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            height=46,
+            corner_radius=8,
+            command=_toggle,
+        )
+        hdr.pack(fill="x")
+        body.pack(fill="x", pady=(6, 0))
+
+        for rule in rules:
+            self._rl_rule_card(body, rule)
+
+    def _rl_rule_card(self, parent, rule):
+        sh = ctk.CTkFrame(parent, fg_color=SHADOW, corner_radius=12)
+        sh.pack(fill="x", pady=(0, 8))
+        inner = ctk.CTkFrame(sh, fg_color=CARD, corner_radius=10)
+        inner.pack(fill="both", expand=True, padx=(2, 3), pady=(2, 3))
+
+        c = ctk.CTkFrame(inner, fg_color=CARD)
+        c.pack(fill="both", padx=20, pady=14)
+
+        hdr = ctk.CTkFrame(c, fg_color=CARD)
+        hdr.pack(fill="x", pady=(0, 8))
+
+        rule_id = rule.get("id", "?")
+        title   = rule.get("title", "")
+
+        ctk.CTkLabel(hdr, text=rule_id,
+                     font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color=PRIMARY).pack(side="left")
+        if title:
+            _label(hdr, f"  —  {title}", size=13, colour=TXT).pack(side="left")
+        if rule.get("critical"):
+            _badge(hdr, "CRITICAL", "white", ERROR).pack(side="left", padx=(10, 0))
+
+        if self._privilege == "ADMIN":
+            _ghost_btn(hdr, "Remove",
+                       lambda r=rule: self._rl_confirm_remove(r),
+                       height=30).pack(side="right")
+            _btn(hdr, "Edit",
+                 lambda r=rule: self._rl_open_edit(r),
+                 height=30, width=70).pack(side="right", padx=(0, 8))
+
+        if rule.get("check"):
+            _label(c, "What it checks:", size=12, colour=TXT2).pack(anchor="w")
+            _label(c, rule["check"], size=13, colour=TXT,
+                   wraplength=680, justify="left").pack(anchor="w", pady=(2, 6))
+
+        if rule.get("citation"):
+            _label(c, "Citation:", size=12, colour=TXT2).pack(anchor="w")
+            _label(c, rule["citation"], size=12, colour=TXT2,
+                   wraplength=680, justify="left").pack(anchor="w", pady=(2, 6))
+
+        if rule.get("comply_requires"):
+            _label(c, "Comply requires:", size=12, colour=TXT2).pack(anchor="w")
+            _label(c, rule["comply_requires"], size=13, colour=TXT,
+                   wraplength=680, justify="left").pack(anchor="w", pady=(2, 0))
+
+    # ── Rules CRUD forms ─────────────────────────────────────────────────────
+
+    def _rl_open_add(self):
+        self._rl_rule_form(None)
+
+    def _rl_open_edit(self, rule):
+        self._rl_rule_form(rule)
+
+    def _rl_rule_form(self, existing):
+        is_edit = existing is not None
+        r = existing or {}
+
+        win = ctk.CTkToplevel(self)
+        win.title("Edit Rule" if is_edit else "Add Rule")
+        win.geometry("720x760")
+        win.configure(fg_color=BG)
+        win.grab_set()
+
+        scroll = ctk.CTkScrollableFrame(win, fg_color=BG)
+        scroll.pack(fill="both", expand=True, padx=28, pady=28)
+
+        ctk.CTkLabel(scroll,
+                     text="Edit Rule" if is_edit else "Add Rule",
+                     font=ctk.CTkFont(size=20, weight="bold"),
+                     text_color=TXT).pack(anchor="w", pady=(0, 20))
+
+        def _entry_row(label, placeholder="", val="", width=460):
+            _label(scroll, label, size=12).pack(anchor="w", pady=(10, 2))
+            e = _entry(scroll, placeholder, width=width)
+            if val:
+                e.insert(0, val)
+            e.pack(anchor="w")
+            return e
+
+        def _text_row(label, val="", height=72):
+            _label(scroll, label, size=12).pack(anchor="w", pady=(10, 2))
+            tb = ctk.CTkTextbox(scroll, height=height, corner_radius=8,
+                                fg_color="white", border_width=1,
+                                border_color=BORDER, text_color=TXT, width=660)
+            tb.pack(anchor="w", fill="x")
+            if val:
+                tb.insert("0.0", val)
+            return tb
+
+        f_id    = _entry_row("Rule ID  *", "e.g. C2.7", val=r.get("id", ""))
+        f_title = _entry_row("Title", "Short descriptive title", val=r.get("title", ""))
+
+        _label(scroll, "Category  *", size=12).pack(anchor="w", pady=(10, 2))
+        cat_labels = [lbl for _, lbl in _RULE_CATS]
+        cur_lbl    = next((lbl for c, lbl in _RULE_CATS if c == r.get("category", "")),
+                          cat_labels[0])
+        f_cat = ctk.CTkComboBox(scroll, values=cat_labels, width=460, height=40,
+                                corner_radius=8, fg_color="white", border_color=BORDER,
+                                text_color=TXT, button_color=PRIMARY,
+                                button_hover_color=TEAL)
+        f_cat.set(cur_lbl)
+        f_cat.pack(anchor="w")
+
+        f_check   = _text_row("Check (what this rule checks)  *", val=r.get("check", ""), height=80)
+        f_why     = _text_row("Why", val=r.get("why", ""), height=64)
+        f_cite    = _text_row("Citation", val=r.get("citation", ""), height=64)
+        f_comply  = _text_row("Comply Requires", val=r.get("comply_requires", ""), height=64)
+        f_missing = _text_row("Missing If", val=r.get("missing_if", ""), height=48)
+
+        triggers_val = ", ".join(r.get("ambiguity_triggers") or [])
+        f_triggers = _entry_row("Ambiguity Triggers (comma-separated)",
+                                "phrase one, phrase two",
+                                val=triggers_val, width=660)
+
+        f_notes = _text_row("Notes", val=r.get("notes", ""), height=48)
+
+        _label(scroll, "Critical rule", size=12).pack(anchor="w", pady=(10, 2))
+        crit_var = ctk.BooleanVar(value=bool(r.get("critical", False)))
+        ctk.CTkSwitch(scroll, text="Mark as critical",
+                      variable=crit_var,
+                      progress_color=ERROR,
+                      button_color=ERROR,
+                      button_hover_color="#DC2626").pack(anchor="w")
+
+        form_err, form_err_lbl = _err_banner(scroll)
+
+        def _save():
+            rid   = f_id.get().strip()
+            check = f_check.get("0.0", "end-1c").strip()
+            if not rid or not check:
+                form_err_lbl.configure(text="⚠  Rule ID and Check are required.")
+                form_err.pack(fill="x", pady=(10, 0))
+                return
+
+            cat_code = next((c for c, lbl in _RULE_CATS if lbl == f_cat.get()), "CAT1")
+            raw_trig = f_triggers.get().strip()
+            triggers = [t.strip() for t in raw_trig.split(",") if t.strip()]
+
+            payload = {
+                "id":                rid,
+                "category":          cat_code,
+                "check":             check,
+                "why":               f_why.get("0.0", "end-1c").strip() or None,
+                "citation":          f_cite.get("0.0", "end-1c").strip() or None,
+                "comply_requires":   f_comply.get("0.0", "end-1c").strip() or None,
+                "missing_if":        f_missing.get("0.0", "end-1c").strip() or None,
+                "ambiguity_triggers": triggers or None,
+                "notes":             f_notes.get("0.0", "end-1c").strip() or None,
+                "critical":          True if crit_var.get() else None,
+            }
+            title_val = f_title.get().strip()
+            if title_val:
+                payload["title"] = title_val
+            payload = {k: v for k, v in payload.items() if v is not None}
+
+            def _ok(_data):
+                win.destroy()
+                self._rl_load_rules()
+
+            def _api_err(msg):
+                form_err_lbl.configure(text=f"⚠  {msg}")
+                form_err.pack(fill="x", pady=(10, 0))
+
+            existing_id = r.get("id") if is_edit else None
+            self._artifact_save_rule(is_edit, existing_id, payload, _ok, _api_err)
+
+        btn_row = ctk.CTkFrame(scroll, fg_color=BG)
+        btn_row.pack(anchor="w", pady=(20, 0))
+        _btn(btn_row, "Save Rule", _save, height=44, width=140).pack(side="left")
+        _ghost_btn(btn_row, "Cancel", win.destroy, height=44).pack(side="left", padx=(12, 0))
+
+    def _rl_confirm_remove(self, rule):
+        rid   = rule.get("id", "?")
+        title = rule.get("title") or (rule.get("check") or "")[:60]
+
+        win = ctk.CTkToplevel(self)
+        win.title("Remove Rule")
+        win.geometry("520x260")
+        win.configure(fg_color=BG)
+        win.grab_set()
+
+        f = ctk.CTkFrame(win, fg_color=BG)
+        f.pack(fill="both", padx=32, pady=32)
+
+        ctk.CTkLabel(f, text="Remove Rule",
+                     font=ctk.CTkFont(size=18, weight="bold"),
+                     text_color=TXT).pack(anchor="w", pady=(0, 12))
+
+        _label(f,
+               f"Are you sure you want to remove rule {rid} — {title}? "
+               "This cannot be undone without restoring a backup.",
+               size=13, colour=TXT, wraplength=450,
+               justify="left").pack(anchor="w", pady=(0, 20))
+
+        rem_err, rem_err_lbl = _err_banner(f)
+
+        def _confirm():
+            def _ok(_data):
+                win.destroy()
+                self._rl_load_rules()
+
+            def _err(msg):
+                rem_err_lbl.configure(text=f"⚠  {msg}")
+                rem_err.pack(fill="x", pady=(8, 0))
+
+            self._artifact_delete_rule(rid, _ok, _err)
+
+        br = ctk.CTkFrame(f, fg_color=BG)
+        br.pack(anchor="w")
+        _btn(br, "Remove", _confirm,
+             fg=ERROR, hover="#DC2626", height=40, width=120).pack(side="left")
+        _ghost_btn(br, "Cancel", win.destroy, height=40).pack(side="left", padx=(12, 0))
 
     def _browse_leg(self):
         path = filedialog.askopenfilename(
@@ -1100,8 +1764,6 @@ class SCCApp(ctk.CTk):
             ("Version",       "1.0.0"),
             ("Organisation",  "Sunshine Coast Council"),
             ("AI Model",      "claude-sonnet-4-6"),
-            ("Vector DB",     "ChromaDB  (local)"),
-            ("Embeddings",    "voyage-law-2"),
         ]:
             row = ctk.CTkFrame(about, fg_color=CARD)
             row.pack(fill="x", pady=3)
@@ -1117,6 +1779,212 @@ class SCCApp(ctk.CTk):
         _save_settings(self._settings)
         self._s_saved.configure(text="✓  Saved")
         self.after(2500, lambda: self._s_saved.configure(text=""))
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # CONTRACTS DIRECTORY
+    # ═════════════════════════════════════════════════════════════════════════
+
+    def _build_contracts(self):
+        page = ctk.CTkScrollableFrame(self._content, fg_color=BG, corner_radius=0)
+        self._pages["contracts"] = page
+
+        p = 32
+        _section_title(page, "Contracts Directory", pady=(p, 16))
+
+        self._cd_spin = _label(page, "Loading…", size=14, colour=TXT2)
+        self._cd_err, self._cd_err_lbl = _err_banner(page)
+
+        self._cd_list = ctk.CTkFrame(page, fg_color=BG, corner_radius=0)
+        self._cd_list.pack(fill="both", expand=True, padx=p, pady=(0, p))
+
+    def _load_contracts_directory(self):
+        for w in self._cd_list.winfo_children():
+            w.destroy()
+        self._cd_err.pack_forget()
+        self._cd_spin.pack(pady=16)
+
+        def _ok(data):
+            self._cd_spin.pack_forget()
+            if not data:
+                _label(self._cd_list, "No contracts found.", size=14,
+                       colour=TXT2).pack(pady=32)
+                return
+            for group in data:
+                self._cd_vendor_card(self._cd_list, group)
+
+        def _err(msg):
+            self._cd_spin.pack_forget()
+            self._show_err(self._cd_err, self._cd_err_lbl, msg)
+
+        self._api("GET", "/contracts/directory", _ok, _err)
+
+    def _cd_vendor_card(self, parent, group):
+        sh = ctk.CTkFrame(parent, fg_color=SHADOW, corner_radius=14)
+        sh.pack(fill="x", pady=(0, 16))
+        inner = ctk.CTkFrame(sh, fg_color=CARD, corner_radius=12)
+        inner.pack(fill="both", expand=True, padx=(2, 3), pady=(2, 3))
+
+        c = ctk.CTkFrame(inner, fg_color=CARD)
+        c.pack(fill="both", padx=24, pady=20)
+
+        hdr = ctk.CTkFrame(c, fg_color=CARD)
+        hdr.pack(fill="x", pady=(0, 12))
+
+        ctk.CTkLabel(hdr, text=group.get("group_name", "—"),
+                     font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color=TXT).pack(side="left")
+
+        gid   = group.get("group_id")
+        gname = group.get("group_name", "")
+        _btn(hdr, "Run Analysis",
+             lambda g=gid, n=gname: self._go_analyse_vendor(g, n),
+             height=36, width=140).pack(side="right")
+
+        contracts = group.get("contracts", [])
+        if not contracts:
+            _label(c, "No contracts uploaded yet.", size=13, colour=TXT2).pack(anchor="w")
+            return
+
+        for ct in contracts:
+            row = ctk.CTkFrame(c, fg_color="#F8FAFC", corner_radius=8)
+            row.pack(fill="x", pady=(0, 6))
+
+            info = ctk.CTkFrame(row, fg_color="transparent")
+            info.pack(fill="x", padx=16, pady=10)
+
+            name       = ct.get("contract_name") or "Unnamed"
+            uploaded   = str(ct.get("uploaded_at") or "")[:10]
+            ps         = ct.get("period_start")
+            pe         = ct.get("period_end")
+            period_str = f"  ·  {ps} → {pe}" if ps or pe else ""
+            detail     = f"uploaded {uploaded}{period_str}" if uploaded else period_str
+
+            ctk.CTkLabel(info, text=name,
+                         font=ctk.CTkFont(size=13, weight="bold"),
+                         text_color=TXT).pack(side="left")
+            if detail:
+                _label(info, f"  —  {detail}", size=12, colour=TXT2).pack(side="left")
+
+    def _go_analyse_vendor(self, group_id, group_name):
+        self._go("analyse")
+        self._a_vendor_entry.delete(0, "end")
+        self._a_vendor_entry.insert(0, group_name)
+        self._a_selected_group_id = group_id
+
+    # ── Artifact CRUD helpers (try API first, fall back to direct file I/O) ──
+
+    def _artifact_save_rule(self, is_edit, existing_id, payload, on_ok, on_err):
+        def _thread():
+            api_path = f"/rules/{existing_id}" if is_edit else "/rules"
+            method   = "PUT" if is_edit else "POST"
+            try:
+                url = self._settings.get("api_url", "http://localhost:8000") + api_path
+                resp = requests.request(method, url, json=payload, timeout=5)
+                resp.raise_for_status()
+                self.after(0, lambda: on_ok(resp.json()))
+                return
+            except Exception:
+                pass
+            try:
+                with open(_ARTIFACT_B_PATH, encoding="utf-8") as fh:
+                    data = json.load(fh)
+                rules = data.get("rules", [])
+                if is_edit:
+                    idx = next((i for i, r in enumerate(rules) if r.get("id") == existing_id), None)
+                    if idx is None:
+                        raise ValueError(f"Rule {existing_id} not found")
+                    rules[idx] = payload
+                else:
+                    if any(r.get("id") == payload.get("id") for r in rules):
+                        raise ValueError(f"Rule ID {payload.get('id')} already exists")
+                    rules.append(payload)
+                data["rules"] = rules
+                with open(_ARTIFACT_B_PATH, "w", encoding="utf-8") as fh:
+                    json.dump(data, fh, indent=2, ensure_ascii=False)
+                self.after(0, lambda: on_ok({}))
+            except Exception as e:
+                self.after(0, lambda: on_err(str(e)))
+
+        threading.Thread(target=_thread, daemon=True).start()
+
+    def _artifact_delete_rule(self, rule_id, on_ok, on_err):
+        def _thread():
+            try:
+                url = self._settings.get("api_url", "http://localhost:8000") + f"/rules/{rule_id}"
+                resp = requests.delete(url, timeout=5)
+                resp.raise_for_status()
+                self.after(0, lambda: on_ok(resp.json()))
+                return
+            except Exception:
+                pass
+            try:
+                with open(_ARTIFACT_B_PATH, encoding="utf-8") as fh:
+                    data = json.load(fh)
+                rules = data.get("rules", [])
+                before = len(rules)
+                rules  = [r for r in rules if r.get("id") != rule_id]
+                if len(rules) == before:
+                    raise ValueError(f"Rule {rule_id} not found")
+                data["rules"] = rules
+                with open(_ARTIFACT_B_PATH, "w", encoding="utf-8") as fh:
+                    json.dump(data, fh, indent=2, ensure_ascii=False)
+                self.after(0, lambda: on_ok({}))
+            except Exception as e:
+                self.after(0, lambda: on_err(str(e)))
+
+        threading.Thread(target=_thread, daemon=True).start()
+
+    # ── Docx download ─────────────────────────────────────────────────────────
+
+    def _download_docx(self, report_id):
+        def _thread():
+            try:
+                api_url = self._settings.get("api_url", "http://localhost:8000")
+                resp = requests.get(
+                    f"{api_url}/reports/{report_id}/download-docx", timeout=60
+                )
+                resp.raise_for_status()
+                suggested = f"compliance_report_{report_id}.docx"
+                cd = resp.headers.get("content-disposition", "")
+                if "filename=" in cd:
+                    suggested = cd.split("filename=")[-1].strip().strip('"')
+                self.after(0, lambda: self._save_docx(resp.content, suggested))
+            except Exception as e:
+                self.after(0, lambda: self._show_docx_error(str(e)))
+
+        threading.Thread(target=_thread, daemon=True).start()
+
+    def _save_docx(self, content, suggested_filename):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".docx",
+            filetypes=[("Word Document", "*.docx")],
+            initialfile=suggested_filename,
+        )
+        if not path:
+            return
+        try:
+            with open(path, "wb") as fh:
+                fh.write(content)
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                os.startfile(path)
+        except Exception as e:
+            self._show_docx_error(str(e))
+
+    def _show_docx_error(self, msg):
+        win = ctk.CTkToplevel(self)
+        win.title("Download Error")
+        win.geometry("440x200")
+        win.configure(fg_color=BG)
+        win.grab_set()
+        f = ctk.CTkFrame(win, fg_color=BG)
+        f.pack(fill="both", padx=32, pady=32)
+        ctk.CTkLabel(f, text="Download failed",
+                     font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color=ERROR).pack(anchor="w")
+        _label(f, msg, size=13, colour=TXT, wraplength=370).pack(anchor="w", pady=(8, 16))
+        _btn(f, "Close", win.destroy, height=36, width=100).pack(anchor="w")
 
     # ── Shared helpers ────────────────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from pathlib import Path
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -8,10 +9,10 @@ from database.database import create_db_server_connection
 from report_analysis.document_parser import parseDOC, parsePDF
 from report_analysis.reports import fetch_prior_findings
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-JSON_PATH = os.path.join(BASE_DIR, 'report_analysis', 'artifact_b.json')
+JSON_PATH = os.path.join(BASE_DIR, 'artifact_b.json')
 
 
 # ---------------------------------------------------------------------------
@@ -99,12 +100,18 @@ def build_user_prompt(rules, contract_text, prior_findings=None):
 # Step 3 — Call Claude (single call)
 # ---------------------------------------------------------------------------
 
+_JSON_ONLY_INSTRUCTION = (
+    "\n\nIMPORTANT: Respond with ONLY the JSON array. "
+    "No introductory text, preamble, explanation, or markdown outside the JSON array itself."
+)
+
+
 def call_claude(system_prompt, user_prompt):
     client = Anthropic()
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=8192,
-        system=system_prompt,
+        system=system_prompt + _JSON_ONLY_INSTRUCTION,
         messages=[{"role": "user", "content": user_prompt}],
     )
     return message.content[0].text
@@ -114,29 +121,17 @@ def call_claude(system_prompt, user_prompt):
 # Step 4 — Parse findings array from Claude response
 # ---------------------------------------------------------------------------
 
-def parse_findings(response_text):
-    text = response_text.strip()
-    if text.startswith('```'):
-        text = text.split('\n', 1)[-1]
-        text = text.rsplit('```', 1)[0].strip()
-
-    try:
-        findings = json.loads(text)
-    except json.JSONDecodeError as e:
-        return [{
-            "rule_id":               "PARSE_ERROR",
-            "outcome":               "PARSE_ERROR",
-            "clause_quoted":         None,
-            "reason":                f"Claude response was not valid JSON: {e}",
-            "citation":              None,
-            "trigger_phrase_matched": None,
-            "_raw_response":         response_text,
-        }]
-
-    if not isinstance(findings, list):
-        findings = [findings]
-
-    return findings
+def extract_json_findings(raw_response: str) -> list:
+    match = re.search(r'```json\s*(\[.*?\])\s*```', raw_response, re.DOTALL)
+    if match:
+        return json.loads(match.group(1))
+    start = raw_response.find('[')
+    end   = raw_response.rfind(']')
+    if start != -1 and end != -1:
+        return json.loads(raw_response[start:end + 1])
+    print("RAW CLAUDE RESPONSE (parse failure):")
+    print(raw_response)
+    raise ValueError(f"No JSON array found in Claude response: {raw_response[:200]}")
 
 
 # ---------------------------------------------------------------------------
@@ -211,11 +206,16 @@ def analyse_contract(contract_text, prior_report_id=None):
 
     user_prompt = build_user_prompt(rules, contract_text, prior_findings or None)
     response    = call_claude(master_prompt, user_prompt)
-    findings    = parse_findings(response)
+    findings    = extract_json_findings(response)
 
     print("RAW CLAUDE RESPONSE:")
     print(response)
     print(f"Received {len(findings)} findings.")
+
+    rules_title_map = {r['rule_id']: r['title'] for r in rules}
+    for finding in findings:
+        rid = finding.get('rule_id', '')
+        finding['rule_title'] = rules_title_map.get(rid, rid)
 
     if prior_findings:
         compare_findings(findings, prior_findings)
@@ -423,9 +423,14 @@ def analyse_vendor_group(group_id, conn=None, prior_report_id=None):
 
     user_prompt = build_group_user_prompt(rules, documents, precedence, prior_findings or None)
     response    = call_claude(master_prompt, user_prompt)
-    findings    = parse_findings(response)
+    findings    = extract_json_findings(response)
 
     print(f"Received {len(findings)} findings.")
+
+    rules_title_map = {r['rule_id']: r['title'] for r in rules}
+    for finding in findings:
+        rid = finding.get('rule_id', '')
+        finding['rule_title'] = rules_title_map.get(rid, rid)
 
     if prior_findings:
         compare_findings(findings, prior_findings)

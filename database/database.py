@@ -1,12 +1,13 @@
 import mysql.connector
 from mysql.connector import Error
+from pathlib import Path
 from dotenv import load_dotenv
 import os
 
 def create_db_server_connection():
     connection = None
-    
-    load_dotenv()
+
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
     try:
         connection = mysql.connector.connect(
@@ -495,8 +496,8 @@ def insertRule(name, code, description, category, approved_by, metadata):
     executeQuery(sql, val)
 
 def selectRuleByCode(code):
-    
-    sql = "SELECT * FROM rules WHERE rule_code=%s"
+
+    sql = "SELECT * FROM rules WHERE rule_name=%s"
     val = (code,)
 
     return executeQuery(sql, val)
@@ -573,17 +574,17 @@ def selectIdAndNameFromAllRiskLevels():
 #                                                                               #
 #################################################################################
 
-def insertComplianceReport(contract, snapshot, prior_report, compliance_status):
+def insertComplianceReport(contract_id, snapshot_id, prior_report_id, compliance_status):
 
-    sql = "INSERT INTO compliance_reports (contract, snapshot, prior_report, compliance_status) VALUES (%s, %s, %s, %s)"
-    val = (contract, snapshot, prior_report, compliance_status)
+    sql = "INSERT INTO compliance_reports (contract_id, snapshot_id, prior_report_id, compliance_status) VALUES (%s, %s, %s, %s)"
+    val = (contract_id, snapshot_id, prior_report_id, compliance_status)
 
     executeQuery(sql, val)
 
-def selectComplianceReportByContractId(contract):
+def selectComplianceReportByContractId(contract_id):
 
-    sql = "SELECT * FROM compliance_reports WHERE contract=%s"
-    val = (contract)
+    sql = "SELECT * FROM compliance_reports WHERE contract_id=%s ORDER BY report_id DESC LIMIT 1"
+    val = (contract_id,)
 
     return executeQuery(sql, val)
 
@@ -593,10 +594,10 @@ def selectComplianceReportByContractId(contract):
 #                                                                               #
 #################################################################################
 
-def insertComplianceRisk(report, risk_level, rule, finding_text, description):
+def insertComplianceRisk(report_id, risk_level_id, rule_id, finding_text, description):
 
-    sql = "INSERT INTO compliance_risks (report, risk_level, rule, finding_text, description) VALUES (%s, %s, %s, %s, %s)"
-    val = (report, risk_level, rule, finding_text, description)
+    sql = "INSERT INTO compliance_risks (report_id, risk_level_id, rule_id, finding_text, description) VALUES (%s, %s, %s, %s, %s)"
+    val = (report_id, risk_level_id, rule_id, finding_text, description)
 
     executeQuery(sql, val)
 

@@ -21,6 +21,7 @@ import json
 import os
 import shutil
 from datetime import datetime, timezone
+from pathlib import Path
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
@@ -29,7 +30,7 @@ from mysql.connector import Error
 from database.database import create_db_server_connection
 from report_analysis.document_parser import parseDOC, parsePDF
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_PATH = os.path.join(BASE_DIR, 'artifact_b.json')

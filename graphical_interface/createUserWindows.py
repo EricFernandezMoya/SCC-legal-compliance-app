@@ -1,51 +1,43 @@
-from tkinter import Entry, Label, StringVar, Button, Toplevel, messagebox
+from tkinter import Entry, Frame, Label, StringVar, Button, messagebox
 from tkinter import ttk
 
-from database.database import *
-from userHandling.userHandling import *
+from database.database import selectPrivileges, selectUserByName, selectPrivilegeByName
+from userHandling.userHandling import createUser
 
 from graphical_interface.graphicalInterface import (
-    root,
-    getSecondWindowsValue,
-    changeSecondWindowsValue,
+    create_modal_window,
     closeSecondWindow,
     reset_border,
 )
 
 
 def createUserWindows():
-    if getSecondWindowsValue():
+    
+    win = create_modal_window("User", toggle=False)
+    if not win:
         return
 
-    changeSecondWindowsValue()
+    win.withdraw()
 
-    createUserFrame = Toplevel(root)
-    createUserFrame.geometry("450x300")
-    createUserFrame.transient(root)
-    createUserFrame.lift()
-    createUserFrame.attributes("-topmost", True)
-    createUserFrame.after(10, lambda: createUserFrame.attributes("-topmost", False))
-    createUserFrame.protocol("WM_DELETE_WINDOW", lambda: closeSecondWindow(createUserFrame))
+    Label(win, text="Create User", font=("Arial", 16)).pack(pady=10)
 
-    titleLabel = Label(createUserFrame, text="Create User", font=("Arial", 16))
-    titleLabel.place(relx=0.5, y=10, anchor="n")
+    createUserFrame = Frame(win)
+    createUserFrame.pack(pady=10, padx=20)
+ 
 
-    usernameLabel = Label(createUserFrame, text="Username:")
-    usernameLabel.place(x=20, y=40)
+    Label(createUserFrame, text="Username:").grid(row=0, column=0, sticky="w")
     usernameEntry = Entry(createUserFrame, width=35)
-    usernameEntry.place(x=20, y=60)
-    usernameEntry.bind("<KeyRelease>", lambda e: reset_border(usernameEntry))
+    usernameEntry.grid(row=1, column=0, columnspan=2, pady=(0, 20), sticky="w")
+    usernameEntry.bind("<KeyRelease>", lambda e: reset_border((usernameEntry,)))
 
-    fullNameLabel = Label(createUserFrame, text="Full name:")
-    fullNameLabel.place(x=20, y=90)
+    Label(createUserFrame, text="Full name:").grid(row=2, column=0, sticky="w")
     fullNameEntry = Entry(createUserFrame, width=35)
-    fullNameEntry.place(x=20, y=110)
+    fullNameEntry.grid(row=3, column=0, columnspan=2, pady=(0, 20), sticky="w")
 
-    passwordLabel = Label(createUserFrame, text="Password:")
-    passwordLabel.place(x=20, y=140)
+    Label(createUserFrame, text="Password:").grid(row=4, column=0, sticky="w")
     passwordEntry = Entry(createUserFrame, width=35)
-    passwordEntry.place(x=20, y=160)
-    passwordEntry.bind("<KeyRelease>", lambda e: reset_border(passwordEntry))
+    passwordEntry.grid(row=5, column=0, columnspan=2, pady=(0, 20), sticky="w")
+    passwordEntry.bind("<KeyRelease>", lambda e: reset_border((passwordEntry,)))
 
     privilegeComboboxStyle = ttk.Style()
     privilegeComboboxStyle.theme_use("default")
@@ -63,8 +55,7 @@ def createUserWindows():
         selectforeground=[("readonly", "black"), ("!disabled", "black")],
     )
 
-    privilegeLabel = Label(createUserFrame, text="Privilege:")
-    privilegeLabel.place(x=20, y=190)
+    Label(createUserFrame, text="Privilege:").grid(row=6, column=0, sticky="w")
     privilegeOptions = []
     for r in selectPrivileges():
         if r[1] == "SYSTEM":
@@ -78,14 +69,13 @@ def createUserWindows():
         state="readonly",
         style="CustomCombobox.TCombobox",
     )
-    privilegeCombobox.place(x=20, y=210)
+    privilegeCombobox.grid(row=7, column=0, pady=(0, 20), sticky="w")
 
     def cancelFrame():
-        changeSecondWindowsValue()
-        createUserFrame.destroy()
+        closeSecondWindow(win, toggle=False)
 
-    cancelButton = Button(createUserFrame, text="Cancel", command=lambda: cancelFrame())
-    cancelButton.place(x=20, y=250)
+    cancelButton = Button(createUserFrame, text="Cancel", command=lambda: cancelFrame(), width=10)
+    cancelButton.grid(row=8, column=0, sticky="w", pady=20)
 
     def saveUser():
         fieldMissing = False
@@ -126,15 +116,22 @@ def createUserWindows():
 
         if not confirm:
             return
-
+        
         createUser(
             user_name,
             user_fullName,
             user_password,
             selectPrivilegeByName(user_privilege)[0][0],
         )
-        changeSecondWindowsValue()
-        createUserFrame.destroy()
 
-    saveUserButton = Button(createUserFrame, text="Save", command=lambda: saveUser())
-    saveUserButton.place(x=430, y=250, anchor="ne")
+        from graphical_interface.mainWindows import load_users
+        load_users()
+        
+        closeSecondWindow(win, toggle=False)
+
+    saveUserButton = Button(createUserFrame, text="Save", command=lambda: saveUser(), width=10)
+    saveUserButton.grid(row=8, column=1, sticky="e", pady=20)
+
+    win.update_idletasks()
+    win.deiconify()
+    win.grab_set()

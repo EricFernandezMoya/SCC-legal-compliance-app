@@ -32,8 +32,8 @@ def insert_privileges():
 
 def insert_users():
 
-    createUser("SYSTEM", "SYSTEM", os.getenv("SYSTEM_PASSWORD"), selectPrivilegeByName("SYSTEM") )
-    createUser("ADMIN", "ADMIN", os.getenv("ADMIN_PASSWORD"), selectPrivilegeByName("ADMIN") )
+    createUser("system", "SYSTEM", os.getenv("SYSTEM_PASSWORD"), selectPrivilegeByName("SYSTEM") )
+    createUser("admin", "ADMIN", os.getenv("ADMIN_PASSWORD"), selectPrivilegeByName("ADMIN") )
 
 
 def insert_categories(categories):
@@ -120,7 +120,6 @@ def _parse_citation(raw):
     doc_name = raw[:m.start()].strip() if m else raw
     return doc_name, raw
 
-
 def insert_documents_versions_and_rule_basis(rules, rule_id_map):
     type_map = _ensure_document_types()
 
@@ -158,8 +157,15 @@ def insert_documents_versions_and_rule_basis(rules, rule_id_map):
     print(f"[4/5] Inserted {len(doc_version_map)} documents/versions and {basis_count} rule_basis records")
 
 # ---------------------------------------------------------------------------
-# Step 5 — Rules snapshot
+# Step 5 — Rules snapshot and Risk Levels
 # ---------------------------------------------------------------------------
+def insert_risks_levels():
+
+    insertRiskLevels("Comply", "The document contains a clause that explicitly and unambiguously satisfies this rule. No further action needed.")
+    insertRiskLevels("Pay attention", "A clause exists but the language is vague or ambiguous and cannot be confirmed as compliant. The reviewer must read the clause directly and make their own judgment.")
+    insertRiskLevels("Not Comply", "A clause is present but explicitly fails this rule. The specific language that caused the flag is quoted directly in the report.")
+    insertRiskLevels("Missing", "No clause addressing this rule could be found in the document at all. The report states what should be present and why.")
+
 
 def create_rules_snapshot(rule_id_map, approved_by):
 
@@ -171,11 +177,13 @@ def create_rules_snapshot(rule_id_map, approved_by):
 
     snapshot_id = selectRulesSnapshotByLabel(label)[0][0]
 
+    insert_risks_levels()
+
     for rule_db_id in rule_id_map.values():
         
         insertSnapshotRule(rule_db_id, snapshot_id) 
 
-    print(f"[5/5] Created rules snapshot ID={snapshot_id} covering {len(rule_id_map)} rules")
+    print(f"[5/5] Created rules snapshot ID={snapshot_id} covering {len(rule_id_map)} rules and risk levels")
     return snapshot_id
 
 

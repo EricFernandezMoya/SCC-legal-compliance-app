@@ -4,7 +4,6 @@ import requests
 from bs4 import BeautifulSoup
 from odf import text, teletype
 from odf.opendocument import load
-from utils import clear_terminal
 
 
 def format_as_python_literal(text, max_line_length=80):

@@ -1,20 +1,22 @@
 import tkinter as tk
-from tkinter import Label, Button, Entry, messagebox
+from tkinter import Frame, Label, Button, Entry, messagebox
 
-from database.database import *
-from userHandling.userHandling import *
+from userHandling.userHandling import userLogin, selectUserByName
+from classesFile import User
 from state import state
+from graphical_interface.mainWindows import openMainWindows
 
 from graphical_interface.graphicalInterface import (
-    logInFrame,
-    mainFrame,
-    show_frame,
-    MEDIUM_FRAME_SIZE,
+    show_frame, 
+    root, 
     LOGIN_FRAME_SIZE,
+    logInFrame
 )
 
 
+
 def login():
+
     global usernameText, passwordEntry
 
     username = usernameText.get()
@@ -29,19 +31,14 @@ def login():
             messagebox.showerror("Login Failed", "Invalid username or password.")
         else:
             if userLogin(username, password):
-                from graphical_interface.mainWindows import userLabel  # imported here to avoid circular issues
 
-                user = User(userData[0][1], userData[0][2], userData[0][3], userData[0][4])
-                state.current_user = user
-
-                userLabel.config(text=username)
-                show_frame(mainFrame, MEDIUM_FRAME_SIZE)
+                state.current_user = User(userData[0][0], userData[0][1], userData[0][2], userData[0][3], userData[0][4])
+                openMainWindows()                 
             else:
                 messagebox.showerror("Login Failed", "Invalid username or password.")
 
     usernameText.delete(0, "end")
     passwordEntry.delete(0, "end")
-
 
 loginTitleLabel = Label(logInFrame, text="Login", font=("Arial", 16))
 loginTitleLabel.place(relx=0.5, y=20, anchor="center")

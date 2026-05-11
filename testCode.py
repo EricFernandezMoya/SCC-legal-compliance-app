@@ -1,0 +1,6 @@
+from graphical_interface.showReportWindows import showReports
+from report_analysis.reports import save_report
+from database.database import insertRiskLevels, selectComplianceReportByContractId, createAuditLogsTable, createComplianceRisksTable, selectComplianceRiskFromReportId, selectReportForPage
+
+
+createComplianceRisksTable()

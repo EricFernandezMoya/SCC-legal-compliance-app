@@ -23,7 +23,7 @@ def createUser(username, name, password, privilege):
 def userLogin(username, password):
    
     userData = selectUserByName(username)
-    user = User(userData[0][1], userData[0][2], userData[0][3], userData[0][4])
+    user = User(userData[0][0], userData[0][1], userData[0][2], userData[0][3], userData[0][4])
     
     if not user:
         return False

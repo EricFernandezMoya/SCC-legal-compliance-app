@@ -27,7 +27,7 @@ def textQueryToAntropic(textQuery):
                 "content": textQuery,
             }
         ],
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
     )
 
     return message.content[0].text

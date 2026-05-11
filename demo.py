@@ -70,7 +70,7 @@ sourceUrlText.place(relx=0.025, y=160)
 
 filePathLabel = Label(anthropicFrame, text="File path:")
 filePathText = Text(anthropicFrame, width=45, height=1)
-filePathIcon = PhotoImage(file="searchFileIcon.png").subsample(8, 8)
+filePathIcon = PhotoImage(file="iconImages/searchFileIcon.png").subsample(8, 8)
 filePathButton = Button(anthropicFrame, image=filePathIcon, command=lambda: selectFilePath(), padx=5, pady=5)
 filePathButton.image = filePathIcon  
 
@@ -140,11 +140,6 @@ def analyse():
             
 analyseButton = Button(anthropicFrame, text="Analyse", command=lambda: analyse())
 analyseButton.place(relx=0.885, y=160)
-
-
-
-
-
 
 root.mainloop()
 

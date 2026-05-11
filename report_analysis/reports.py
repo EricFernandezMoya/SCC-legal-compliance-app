@@ -29,6 +29,7 @@ def _fetch_db_rule_id(artifact_rule_id):
     Resolve an artifact rule id (e.g. 'R1') to the DB rules.rule_id integer.
     Ingestion stores the artifact id in rules.rule_code.
     """
+    print(f"Rule code: {artifact_rule_id}")
     row = selectRuleByCode(artifact_rule_id)[0]
     return row[0] if row else None
 
@@ -50,15 +51,20 @@ def save_report(contract_id, findings, prior_report_id=None):
     lastSnapshot_id = selectLastRulesSnapshot()[0][0]
 
     insertComplianceReport(contract_id, lastSnapshot_id, prior_report_id, 'pending_review')
-    report_id = selectComplianceReportByContractId(contract_id)
-
+    report_id = selectComplianceReportByContractId(contract_id)[0][0]
+    
         # --- Insert one risk row per finding ---
     skipped = 0
     for finding in findings:
         artifact_rule_id = finding.get('rule_id')
+        
+        if artifact_rule_id == "PARSE_ERROR":
+            print("Skipping PARSE_ERROR finding")
+            continue
+
+
         db_rule_id = _fetch_db_rule_id(artifact_rule_id)
         if db_rule_id is None:
-            print(f"save_report: no DB rule found for rule_id '{artifact_rule_id}' — skipping.")
             skipped += 1
             continue
 
@@ -71,17 +77,20 @@ def save_report(contract_id, findings, prior_report_id=None):
 
         insertComplianceRisk(report_id, risk_level_id, db_rule_id, finding_text, description)
         
-        written = len(findings) - skipped
+    written = len(findings) - skipped
 
-        insertAuditLog(
-                'compliance_report',
-                report_id,
-                'report_generated',
-                'system',
-                json.dumps({
-                    'contract_id':     contract_id,
-                    'snapshot_id':     lastSnapshot_id,
-                    'findings_written': written,
-                    'findings_skipped': skipped,
-                }),
-            )
+    delta = json.dumps({
+                'contract_id':     contract_id,
+                'snapshot_id':     lastSnapshot_id,
+                'findings_written': written,
+                'findings_skipped': skipped,
+            })
+        
+    insertAuditLog(
+            'compliance_report',
+            report_id,
+            'report_generated',
+            'system',
+            delta,
+        )
+    return report_id

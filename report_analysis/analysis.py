@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-JSON_PATH = os.path.join(BASE_DIR, 'SCCProject', 'artifact_b.json')
+JSON_PATH = os.path.join(BASE_DIR, 'report_analysis', 'artifact_b.json')
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +62,11 @@ def build_user_prompt(rules, contract_text):
 
     return (
         "Analyse the contract text below against every rule listed. "
-        "Return a JSON array — one finding object per rule, in rule order. "
+        "Return ONLY a JSON array. "
+        "Do NOT include any text before or after the JSON. "
+        "Do NOT include ```json fences. "
+        "Do NOT explain your reasoning. "
+        "All JSON strings MUST escape internal quotes using \"."
         "Each object must contain exactly these fields: "
         "rule_id, outcome, clause_quoted, reason, citation, trigger_phrase_matched.\n\n"
         f"RULES:\n{rules_text}\n\n"
@@ -91,28 +95,41 @@ def call_claude(system_prompt, user_prompt):
 
 def parse_findings(response_text):
     text = response_text.strip()
-    if text.startswith('```'):
-        text = text.split('\n', 1)[-1]
-        text = text.rsplit('```', 1)[0].strip()
 
+    # Remove markdown fences if present
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1]
+        text = text.rsplit("```", 1)[0].strip()
+
+    # Remove outer quotes if JSON is wrapped as a string literal
+    if (text.startswith("'") and text.endswith("'")) or (text.startswith('"') and text.endswith('"')):
+        text = text[1:-1].strip()
+
+    # Extract only the JSON array
+    first_bracket = text.find("[")
+    last_bracket = text.rfind("]")
+
+    if first_bracket != -1 and last_bracket != -1:
+        text = text[first_bracket:last_bracket+1]
+
+    # Attempt to parse
     try:
         findings = json.loads(text)
     except json.JSONDecodeError as e:
         return [{
-            "rule_id":               "PARSE_ERROR",
-            "outcome":               "PARSE_ERROR",
-            "clause_quoted":         None,
-            "reason":                f"Claude response was not valid JSON: {e}",
-            "citation":              None,
+            "rule_id": "PARSE_ERROR",
+            "outcome": "PARSE_ERROR",
+            "clause_quoted": None,
+            "reason": f"Claude response was not valid JSON: {e}",
+            "citation": None,
             "trigger_phrase_matched": None,
-            "_raw_response":         response_text,
+            "_raw_response": response_text,
         }]
 
     if not isinstance(findings, list):
         findings = [findings]
 
     return findings
-
 
 # ---------------------------------------------------------------------------
 # Step 5 — Main analysis function
@@ -136,7 +153,7 @@ def analyse_contract(contract_text):
     findings    = parse_findings(response)
 
     print("RAW CLAUDE RESPONSE:")
-    print(response)
+    print(findings)
     print(f"Received {len(findings)} findings.")
     return findings
 

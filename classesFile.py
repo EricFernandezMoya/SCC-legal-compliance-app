@@ -1,32 +1,27 @@
+from tkinter import ttk
+import tkinter as tk
+
+
 class User:
-    def __init__(self, username, name, password, privilege):
+    def __init__(self, id, username, name, password, privilege):
         self.username= username
         self.name = name
-        self.password = password
+        self.id = id
         self.privilege = privilege
+        self.password = password
 
     def get_username(self):
         return self.username
     
-    def get_password(self):
-        return self.password
+    def get_id(self):
+        return self.id
     
     def get_name(self):
         return self.name
     
     def get_privilege(self):
-        self.privilege
+        return self.privilege
 
-class Document:
-    def __init__(self, document_id, name, jurisdiction, year, description, date_created, date_updated, document_type):
-        self.document_id = document_id
-        self.name = name
-        self.jurisdiction = jurisdiction
-        self.year = year
-        self.description = description
-        self.date_created = date_created
-        self.date_updated = date_updated
-        self.document_type = document_type
+    def get_password(self):
+        return self.password
     
-    def getId(self):
-        return self.document_id

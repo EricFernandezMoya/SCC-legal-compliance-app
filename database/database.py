@@ -191,19 +191,28 @@ def create_tables():
         db_cursor.execute(
             '''
             CREATE TABLE compliance_reports (
-                report_id INT AUTO_INCREMENT PRIMARY KEY, 
-                contract INT NOT NULL, 
-                prior_report INT, 
-                snapshot INT NOT NULL, 
-                compliance_status VARCHAR(255), 
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP, 
-                FOREIGN KEY (contract) REFERENCES contracts(contract_id), 
-                FOREIGN KEY (prior_report) REFERENCES compliance_reports(report_id), 
+                report_id INT AUTO_INCREMENT PRIMARY KEY,
+                contract INT NOT NULL,
+                prior_report INT,
+                snapshot INT NOT NULL,
+                compliance_status VARCHAR(255),
+                failed_urls TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (contract) REFERENCES contracts(contract_id),
+                FOREIGN KEY (prior_report) REFERENCES compliance_reports(report_id),
                 FOREIGN KEY (snapshot) REFERENCES rules_snapshots(snapshot_id)
             );
             '''
         )
-        
+
+        try:
+            db_cursor.execute(
+                "ALTER TABLE compliance_reports ADD COLUMN failed_urls TEXT"
+            )
+            connection.commit()
+        except Exception:
+            pass  # Column already exists
+
         db_cursor.execute(
             '''
             CREATE TABLE risk_levels (
@@ -270,6 +279,27 @@ def create_tables():
             db_cursor.close()
             connection.close()
 
+
+
+def ensure_schema():
+    connection = create_db_server_connection()
+    try:
+        db_cursor = connection.cursor()
+        try:
+            db_cursor.execute(
+                "ALTER TABLE compliance_reports ADD COLUMN failed_urls TEXT"
+            )
+            connection.commit()
+        except Exception:
+            pass  # Column already exists
+    except Error as err:
+        print(f"Error: '{err}'")
+    finally:
+        if connection.is_connected():
+            db_cursor.close()
+            connection.close()
+
+ensure_schema()
 
 
 def executeQuery(sql, val):

@@ -72,6 +72,25 @@ def _find_latest_report_for_group(group_id: int) -> Optional[int]:
 _ARTIFACT_B = Path(__file__).parent / "artifact_b.json"
 
 
+def _persist_failed_urls(report_id: int, failed_urls: List[str]) -> None:
+    conn = create_db_server_connection()
+    if conn is None:
+        return
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE compliance_reports SET failed_urls = %s WHERE report_id = %s",
+            (json.dumps(failed_urls), report_id),
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
+
+
 def _backup_artifact() -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dest = _ARTIFACT_B.parent / f"artifact_b_backup_{ts}.json"
@@ -141,6 +160,7 @@ async def analyse(
             os.unlink(tmp_path)
 
     # Fetch URLs
+    failed_urls: List[str] = []
     if urls:
         for raw_url in urls.splitlines():
             url = raw_url.strip()
@@ -150,6 +170,7 @@ async def analyse(
                 url_text = _fetch_url_text(url)
                 text_parts.append(f"=== SOURCE: {url} ===\n{url_text}")
             except Exception as exc:
+                failed_urls.append(url)
                 text_parts.append(f"=== SOURCE: {url} (fetch failed: {exc}) ===")
 
     if not text_parts:
@@ -216,11 +237,15 @@ async def analyse(
     if report_id is None:
         raise HTTPException(status_code=500, detail="Failed to save report to database.")
 
+    if failed_urls:
+        _persist_failed_urls(report_id, failed_urls)
+
     return {
-        "report_id":  report_id,
+        "report_id":   report_id,
         "contract_id": contract_id,
-        "findings":   findings,
-        "group_id":   group_id,
+        "findings":    findings,
+        "group_id":    group_id,
+        "failed_urls": failed_urls,
     }
 
 

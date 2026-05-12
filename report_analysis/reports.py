@@ -169,7 +169,7 @@ def build_report_data(report_id, db_conn):
     try:
         cursor.execute(
             """
-            SELECT cr.report_id, cr.created_at,
+            SELECT cr.report_id, cr.created_at, cr.failed_urls,
                    c.contract_name, c.counterparty, c.uploaded_by
             FROM compliance_reports cr
             JOIN contracts c ON cr.contract_id = c.contract_id
@@ -247,5 +247,6 @@ def build_report_data(report_id, db_conn):
             "failed":            failed,
             "critical_failures": critical_failures,
         },
-        "findings": findings,
+        "findings":     findings,
+        "failed_urls":  json.loads(report_row["failed_urls"] or "[]"),
     }

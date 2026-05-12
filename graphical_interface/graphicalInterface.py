@@ -5,6 +5,7 @@ Sunshine Coast Council branding: primary blue #005B8E, teal #00B5CC.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -18,6 +19,12 @@ try:
     import pillow_avif  # noqa: F401  registers avif decoder
 except ImportError:
     pass
+
+try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
+    _DND_AVAILABLE = True
+except ImportError:
+    _DND_AVAILABLE = False
 
 # ── Appearance ───────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("light")
@@ -189,6 +196,8 @@ class SCCApp(ctk.CTk):
 
     def __init__(self):
         super().__init__()
+        if _DND_AVAILABLE:
+            TkinterDnD._require(self)
         self.title("SCC Compliance Tool")
         self.geometry("1280x820")
         self.minsize(960, 640)
@@ -200,7 +209,7 @@ class SCCApp(ctk.CTk):
         self._privilege = ""
 
         # per-page state
-        self._analyse_file        = None
+        self._analyse_files       = []
         self._leg_file            = None
         self._leg_review_id       = None
         self._leg_decisions       = []
@@ -548,16 +557,25 @@ class SCCApp(ctk.CTk):
             fill="x", pady=(0, 20)
         )
 
-        # ── File upload
-        self._a_file_lbl = _upload_box(
-            form,
-            "Click to browse or drag and drop",
-            self._browse_contract,
-        )
-        self._a_clear_file_row = ctk.CTkFrame(form, fg_color=CARD)
-        _ghost_btn(self._a_clear_file_row, "× Clear file",
-                   self._clear_contract_file, height=28).pack(anchor="w")
-        # not packed until a file is selected
+        # ── File upload (multi-file)
+        drop_hint = "Drop files here or click Browse" if _DND_AVAILABLE else "Click Browse to select files"
+        self._a_upload_box = ctk.CTkFrame(form, fg_color="#F8FAFC", corner_radius=8,
+                                          border_width=2, border_color=BORDER)
+        self._a_upload_box.pack(fill="x", pady=(0, 8))
+        _ub_inner = ctk.CTkFrame(self._a_upload_box, fg_color="transparent")
+        _ub_inner.pack(padx=24, pady=20)
+        _label(_ub_inner, "📂", size=32).pack()
+        _label(_ub_inner, drop_hint).pack(pady=(4, 0))
+        _label(_ub_inner, "PDF, DOC, DOCX supported", size=11).pack()
+        _btn(_ub_inner, "Browse Files", self._browse_contract,
+             height=36, width=140, font=ctk.CTkFont(size=13)).pack(pady=(8, 0))
+        if _DND_AVAILABLE:
+            self._a_upload_box.drop_target_register(DND_FILES)
+            self._a_upload_box.dnd_bind("<<Drop>>", self._on_contract_drop)
+
+        # file list — one row per file, shown below the drop box
+        self._a_file_list_frame = ctk.CTkFrame(form, fg_color=CARD)
+        self._a_file_list_frame.pack(fill="x", pady=(0, 8))
 
         # ── URL input
         _label(form, "Or add document URLs", size=13).pack(anchor="w", pady=(0, 4))
@@ -645,25 +663,63 @@ class SCCApp(ctk.CTk):
             font=ctk.CTkFont(size=17, weight="bold"), text_color=TXT,
         )
         self._a_res_title.pack(anchor="w", padx=p, pady=(20, 12))
+        self._a_warn_frame = ctk.CTkFrame(self._a_results, fg_color="#FEF3C7", corner_radius=8)
         self._a_findings = ctk.CTkFrame(self._a_results, fg_color=BG)
         self._a_findings.pack(fill="x", padx=p)
 
     def _browse_contract(self):
-        path = filedialog.askopenfilename(
-            title="Select contract file",
+        paths = filedialog.askopenfilenames(
+            title="Select contract files",
             filetypes=[("Documents", "*.pdf *.doc *.docx")],
         )
-        if path:
-            self._analyse_file = path
-            self._a_file_lbl.configure(text=os.path.basename(path), text_color=PRIMARY)
-            self._a_clear_file_row.pack(anchor="w", pady=(0, 8))
-            self._update_doc_count()
+        if paths:
+            self._add_contract_files(list(paths))
 
-    def _clear_contract_file(self):
-        self._analyse_file = None
-        self._a_file_lbl.configure(text="No file selected", text_color=TXT2)
-        self._a_clear_file_row.pack_forget()
+    def _on_contract_drop(self, event):
+        paths = self._parse_dnd_paths(event.data)
+        allowed = {".pdf", ".doc", ".docx"}
+        paths = [p for p in paths if os.path.splitext(p)[1].lower() in allowed]
+        if paths:
+            self._add_contract_files(paths)
+
+    @staticmethod
+    def _parse_dnd_paths(data):
+        """Parse tkdnd path string — handles brace-quoted paths with spaces."""
+        result = []
+        for token in re.findall(r'\{[^}]*\}|\S+', data):
+            if token.startswith('{') and token.endswith('}'):
+                result.append(token[1:-1])
+            else:
+                result.append(token)
+        return result
+
+    def _add_contract_files(self, paths):
+        for p in paths:
+            if p not in self._analyse_files:
+                self._analyse_files.append(p)
+        self._refresh_file_list_ui()
         self._update_doc_count()
+
+    def _remove_contract_file(self, path):
+        if path in self._analyse_files:
+            self._analyse_files.remove(path)
+        self._refresh_file_list_ui()
+        self._update_doc_count()
+
+    def _refresh_file_list_ui(self):
+        for w in self._a_file_list_frame.winfo_children():
+            w.destroy()
+        for path in self._analyse_files:
+            row = ctk.CTkFrame(self._a_file_list_frame, fg_color="#F0F4F8", corner_radius=6)
+            row.pack(fill="x", pady=2, padx=2)
+            _label(row, os.path.basename(path), size=12, colour=TXT).pack(
+                side="left", padx=(10, 4), pady=6, fill="x", expand=True)
+            ctk.CTkButton(
+                row, text="×", width=26, height=26, corner_radius=6,
+                fg_color="transparent", hover_color=ERROR,
+                text_color=TXT2, font=ctk.CTkFont(size=14, weight="bold"),
+                command=lambda p=path: self._remove_contract_file(p),
+            ).pack(side="right", padx=(0, 4), pady=4)
 
     def _load_vendors(self):
         def _ok(data):
@@ -729,7 +785,7 @@ class SCCApp(ctk.CTk):
             self._a_dropdown_win = None
 
     def _update_doc_count(self):
-        file_count = 1 if self._analyse_file else 0
+        file_count = len(self._analyse_files)
         urls_text  = self._a_urls_box.get("0.0", "end-1c").strip()
         url_count  = len([u for u in urls_text.splitlines() if u.strip()])
         self._a_doc_count = file_count + url_count
@@ -752,7 +808,7 @@ class SCCApp(ctk.CTk):
                 self._show_err(self._a_err, self._a_err_lbl, "Please enter a Contract Name.")
                 return
 
-        if not self._analyse_file and not urls:
+        if not self._analyse_files and not urls:
             self._show_err(self._a_err, self._a_err_lbl,
                            "Please select a contract file or enter at least one URL.")
             return
@@ -765,11 +821,51 @@ class SCCApp(ctk.CTk):
         def _ok(data):
             self._a_btn.configure(state="normal")
             self._a_spin.pack_forget()
-            findings  = data.get("findings", [])
-            report_id = data.get("report_id")
+            findings     = data.get("findings", [])
+            report_id    = data.get("report_id")
+            failed_urls  = data.get("failed_urls") or []
             self._a_res_title.configure(
                 text=f"Results — Report #{report_id}  ·  {len(findings)} findings"
             )
+
+            # Rebuild amber warning banner
+            for w in self._a_warn_frame.winfo_children():
+                w.destroy()
+            self._a_findings.pack_forget()
+            if failed_urls:
+                hdr_row = ctk.CTkFrame(self._a_warn_frame, fg_color="#FEF3C7")
+                hdr_row.pack(fill="x", padx=12, pady=(10, 4))
+                ctk.CTkLabel(
+                    hdr_row,
+                    text="\u26a0  Documents Not Retrieved — findings for these sources may be incomplete",
+                    font=ctk.CTkFont(size=13, weight="bold"),
+                    text_color="#92400E", anchor="w",
+                ).pack(side="left", fill="x", expand=True)
+                ctk.CTkButton(
+                    hdr_row, text="\u00d7", width=28, height=28,
+                    fg_color="#FEF3C7", text_color="#92400E", hover_color="#FDE68A",
+                    command=self._a_warn_frame.pack_forget,
+                ).pack(side="right")
+                ctk.CTkLabel(
+                    self._a_warn_frame,
+                    text="\n".join(f"  \u2022 {u}" for u in failed_urls),
+                    font=ctk.CTkFont(size=12), text_color="#92400E",
+                    anchor="w", justify="left",
+                ).pack(fill="x", padx=12, pady=(0, 4))
+                ctk.CTkLabel(
+                    self._a_warn_frame,
+                    text=(
+                        "Save as PDF: Chrome/Edge \u2014 File \u2192 Print \u2192 Save as PDF."
+                        "  Safari \u2014 File \u2192 Export as PDF."
+                    ),
+                    font=ctk.CTkFont(size=11), text_color="#92400E",
+                    anchor="w", wraplength=700, justify="left",
+                ).pack(fill="x", padx=12, pady=(0, 10))
+                self._a_warn_frame.pack(fill="x", padx=32, pady=(0, 12))
+            else:
+                self._a_warn_frame.pack_forget()
+            self._a_findings.pack(fill="x", padx=32)
+
             for w in self._a_findings.winfo_children():
                 w.destroy()
             for f in findings:
@@ -808,9 +904,11 @@ class SCCApp(ctk.CTk):
                 if urls:
                     form_data["urls"] = "\n".join(urls)
 
-                if self._analyse_file:
-                    with open(self._analyse_file, "rb") as fh:
-                        files = {"file": (os.path.basename(self._analyse_file), fh.read())}
+                if self._analyse_files:
+                    files = [
+                        ("file", (os.path.basename(p), open(p, "rb").read()))
+                        for p in self._analyse_files
+                    ]
                     resp = requests.post(api_url, files=files, data=form_data, timeout=180)
                 else:
                     resp = requests.post(api_url, data=form_data, timeout=180)

@@ -83,6 +83,77 @@ def _divider(doc):
     return p
 
 
+_AMBER_BG  = "FEF3C7"
+_AMBER_BDR = RGBColor(0x92, 0x40, 0x0E)
+_AMBER_BDR_HEX = "92400E"
+
+
+def _warning_box(doc, failed_urls):
+    """Amber warning box listing URLs that could not be retrieved."""
+    tbl = doc.add_table(rows=1, cols=1)
+    cell = tbl.rows[0].cells[0]
+
+    # Cell shading
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"),   "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"),  _AMBER_BG)
+    tcPr.append(shd)
+
+    # Cell borders (1pt = 8 eighths-of-a-point)
+    tcBorders = OxmlElement("w:tcBorders")
+    for side in ("top", "left", "bottom", "right"):
+        el = OxmlElement(f"w:{side}")
+        el.set(qn("w:val"),   "single")
+        el.set(qn("w:sz"),    "8")
+        el.set(qn("w:space"), "0")
+        el.set(qn("w:color"), _AMBER_BDR_HEX)
+        tcBorders.append(el)
+    tcPr.append(tcBorders)
+
+    # Cell inner margins
+    tcMar = OxmlElement("w:tcMar")
+    for side in ("top", "left", "bottom", "right"):
+        m = OxmlElement(f"w:{side}")
+        m.set(qn("w:w"),    "120")
+        m.set(qn("w:type"), "dxa")
+        tcMar.append(m)
+    tcPr.append(tcMar)
+
+    # Heading
+    hdr_p = cell.paragraphs[0]
+    hdr_run = hdr_p.add_run("\u26a0 Documents Not Retrieved")
+    hdr_run.bold = True
+    hdr_run.font.size = Pt(11)
+    hdr_run.font.color.rgb = _AMBER_BDR
+
+    def _add_body_line(text):
+        p = cell.add_paragraph()
+        run = p.add_run(text)
+        run.font.size = Pt(10)
+        run.font.color.rgb = _TXT
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after  = Pt(1)
+
+    _add_body_line(
+        "The following URLs could not be automatically retrieved during this "
+        "analysis. Findings for rules that depend on these documents have been "
+        "marked MISSING rather than FAIL. To obtain a complete assessment, save "
+        "each page as a PDF and upload it when re-running this analysis."
+    )
+    _add_body_line("")
+    for url in failed_urls:
+        _add_body_line(f"\u2022 {url}")
+    _add_body_line("")
+    _add_body_line(
+        "How to save as PDF: Chrome/Edge \u2014 File \u2192 Print \u2192 Save as PDF. "
+        "Safari \u2014 File \u2192 Export as PDF."
+    )
+
+    doc.add_paragraph()
+
+
 def generate_word_report(report_data: dict, output_dir: str = "reports/") -> str:
     """
     Generate a Word document from report_data and save it to output_dir.
@@ -168,6 +239,11 @@ def generate_word_report(report_data: dict, output_dir: str = "reports/") -> str
 
     doc.add_paragraph()
     _divider(doc)
+
+    # ── Failed-URL warning ────────────────────────────────────────────────────
+    failed_urls = report_data.get("failed_urls") or []
+    if failed_urls:
+        _warning_box(doc, failed_urls)
 
     # ── Findings ──────────────────────────────────────────────────────────────
     _heading(doc, "Detailed Findings", level=1, color=_PRIMARY)

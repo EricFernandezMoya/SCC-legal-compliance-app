@@ -6,7 +6,7 @@ from anthropic import Anthropic
 from dotenv import load_dotenv
 
 from database.database import create_db_server_connection
-from report_analysis.document_parser import parseDOC, parsePDF
+from report_analysis.document_parser import parseDOC, parsePDF, parseWebsite
 from report_analysis.reports import fetch_prior_findings
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -262,7 +262,18 @@ def detect_precedence_clause(documents):
     return None
 
 
-def build_group_user_prompt(rules, documents, precedence=None, prior_findings=None):
+def build_fetch_summary(successful_urls, failed_urls):
+    lines = []
+    for item in successful_urls:
+        lines.append(f"  \u2713 {item['url']}")
+    for item in failed_urls:
+        lines.append(f"  \u2717 {item['url']} \u2014 {item['reason']}")
+    lines.append("")
+    lines.append("Do NOT penalise rules for content that may exist in unretrieved documents.")
+    return "\n".join(lines)
+
+
+def build_group_user_prompt(rules, documents, precedence=None, prior_findings=None, fetch_summary=None):
     """
     Build a combined analysis prompt for multiple documents from one vendor.
     documents:     list of {'name': str, 'text': str}
@@ -293,7 +304,11 @@ def build_group_user_prompt(rules, documents, precedence=None, prior_findings=No
 
     docs_block = []
     for i, doc in enumerate(documents, start=1):
-        docs_block.append(f"=== DOCUMENT {i}: {doc['name']} ===\n{doc['text']}")
+        if doc.get('url'):
+            header = f"=== SOURCE: {doc['url']} ==="
+        else:
+            header = f"=== DOCUMENT {i}: {doc['name']} ==="
+        docs_block.append(f"{header}\n{doc['text']}")
     combined_text = '\n\n'.join(docs_block)
 
     if precedence:
@@ -322,7 +337,26 @@ def build_group_user_prompt(rules, documents, precedence=None, prior_findings=No
             "ESCALATED > REGRESSED > NEW_GAP > GAP_FILLED > IMPROVED > NEW_RULE > UNCHANGED"
         )
 
+    retrieval_section = ""
+    if fetch_summary:
+        retrieval_section = (
+            "=== DOCUMENT RETRIEVAL SUMMARY ===\n"
+            f"{fetch_summary}\n\n"
+            "=== CRITICAL INSTRUCTIONS ===\n"
+            "a. If a rule cannot be assessed because the relevant document was not retrieved, "
+            "set result to MISSING and state: \"This rule could not be assessed \u2014 [document name] "
+            "was not successfully retrieved.\" Do NOT say FAIL or NOT_COMPLY.\n"
+            "b. If a rule IS addressed in retrieved text, assess normally and return PASS, "
+            "PAY_ATTENTION, or NOT_COMPLY.\n"
+            "c. If a rule is genuinely absent from all retrieved documents, return NOT_COMPLY "
+            "and cite which documents were searched.\n"
+            "d. Always quote the exact clause from retrieved text that informed the finding. "
+            "If none exists, say so explicitly.\n"
+            "e. Do not assume content exists in documents that were not retrieved.\n\n"
+        )
+
     return (
+        f"{retrieval_section}"
         f"{hierarchy_section}\n\n"
         f"You are reviewing {len(documents)} document(s) from the same vendor as one combined compliance picture. "
         "Analyse all documents together against every rule listed. "
@@ -340,7 +374,9 @@ def build_group_user_prompt(rules, documents, precedence=None, prior_findings=No
 
 
 def _parse_file(file_path):
-    """Parse a contract file to text based on its extension."""
+    """Parse a contract file or URL to text."""
+    if file_path.startswith("http"):
+        return parseWebsite(file_path)
     ext = os.path.splitext(file_path)[1].lower()
     if ext == '.pdf':
         return parsePDF(file_path)
@@ -382,18 +418,32 @@ def fetch_group_documents(group_id, conn=None):
         raise ValueError(f"No contracts found for group_id={group_id}.")
 
     documents = []
+    failed_docs = []
     for row in rows:
         file_path = row['file_path']
         name = row['contract_name'] or os.path.basename(file_path)
         print(f"  Parsing: {name} ({file_path})")
-        text = _parse_file(file_path)
-        documents.append({
-            'contract_id': row['contract_id'],
-            'name':        name,
-            'text':        text,
-        })
+        if file_path.startswith("http"):
+            try:
+                text = parseWebsite(file_path)
+                documents.append({
+                    'contract_id': row['contract_id'],
+                    'name':        name,
+                    'text':        text,
+                    'url':         file_path,
+                })
+            except ValueError as exc:
+                print(f"  Failed to fetch {file_path}: {exc}")
+                failed_docs.append({"url": file_path, "reason": str(exc)})
+        else:
+            text = _parse_file(file_path)
+            documents.append({
+                'contract_id': row['contract_id'],
+                'name':        name,
+                'text':        text,
+            })
 
-    return documents
+    return documents, failed_docs
 
 
 def analyse_vendor_group(group_id, conn=None, prior_report_id=None):
@@ -404,7 +454,14 @@ def analyse_vendor_group(group_id, conn=None, prior_report_id=None):
     If prior_report_id is given, each finding also gets a change_summary field.
     """
     print(f"Fetching documents for group_id={group_id} ...", flush=True)
-    documents = fetch_group_documents(group_id, conn=conn)
+    documents, failed_docs = fetch_group_documents(group_id, conn=conn)
+
+    successful_urls = [{"url": d["url"], "text": d["text"]} for d in documents if "url" in d]
+    failed_urls     = failed_docs
+
+    fetch_summary = None
+    if successful_urls or failed_urls:
+        fetch_summary = build_fetch_summary(successful_urls, failed_urls)
 
     precedence     = detect_precedence_clause(documents)
     prior_findings = fetch_prior_findings(prior_report_id) if prior_report_id else {}
@@ -418,10 +475,12 @@ def analyse_vendor_group(group_id, conn=None, prior_report_id=None):
     rules         = load_rules()
 
     doc_names = [d['name'] for d in documents]
+    if failed_urls:
+        print(f"  Failed to retrieve {len(failed_urls)} URL(s): {[f['url'] for f in failed_urls]}")
     print(f"Loaded {len(rules)} rules. Analysing {len(documents)} document(s): {doc_names}")
     print("Calling Claude with combined vendor documents and all rules ...", flush=True)
 
-    user_prompt = build_group_user_prompt(rules, documents, precedence, prior_findings or None)
+    user_prompt = build_group_user_prompt(rules, documents, precedence, prior_findings or None, fetch_summary)
     response    = call_claude(master_prompt, user_prompt)
     findings    = extract_json_findings(response)
 

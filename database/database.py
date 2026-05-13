@@ -13,8 +13,9 @@ def create_db_server_connection():
         connection = mysql.connector.connect(
             host = os.getenv("MYSQL_HOST"),
             user = os.getenv("MYSQL_USER"),
-            passwd = os.getenv("MYSQL_PW"), 
-            database = os.getenv("MYSQL_DB")
+            passwd = os.getenv("MYSQL_PW"),
+            database = os.getenv("MYSQL_DB"),
+            port = int(os.getenv("MYSQL_PORT", 3306))
         )
        
     except Error as err:
@@ -31,7 +32,7 @@ def create_tables():
 
         db_cursor.execute(
             '''
-            CREATE TABLE privileges (
+            CREATE TABLE IF NOT EXISTS privileges (
                 privilege_id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(255) NOT NULL UNIQUE
             );
@@ -40,7 +41,7 @@ def create_tables():
 
         db_cursor.execute(
             '''
-            CREATE TABLE users (
+            CREATE TABLE IF NOT EXISTS users (
                 user_id INT AUTO_INCREMENT PRIMARY KEY, 
                 user_name VARCHAR(100) NOT NULL UNIQUE, 
                 full_name VARCHAR(255), 
@@ -53,7 +54,7 @@ def create_tables():
 
         db_cursor.execute(
             '''
-            CREATE TABLE categories (
+            CREATE TABLE IF NOT EXISTS categories (
                 category_id INT AUTO_INCREMENT PRIMARY KEY, 
                 category_code VARCHAR(25) NOT NULL UNIQUE, 
                 category_name VARCHAR(255) NOT NULL UNIQUE
@@ -63,7 +64,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE rules (
+            CREATE TABLE IF NOT EXISTS rules (
                 rule_id INT AUTO_INCREMENT PRIMARY KEY, 
                 rule_name VARCHAR(255) NOT NULL UNIQUE, 
                 rule_code VARCHAR(255) NOT NULL UNIQUE, 
@@ -80,7 +81,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE document_types (
+            CREATE TABLE IF NOT EXISTS document_types (
                 document_type_id INT AUTO_INCREMENT PRIMARY KEY,
                 type_name VARCHAR(255) NOT NULL UNIQUE
             );
@@ -89,7 +90,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE documents (
+            CREATE TABLE IF NOT EXISTS documents (
                 document_id INT AUTO_INCREMENT PRIMARY KEY, 
                 document_name VARCHAR(500) NOT NULL UNIQUE, 
                 jurisdiction VARCHAR(255), 
@@ -105,7 +106,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE document_versions (
+            CREATE TABLE IF NOT EXISTS document_versions (
                 version_id INT AUTO_INCREMENT PRIMARY KEY, 
                 document INT NOT NULL, 
                 version_number VARCHAR(255), 
@@ -121,7 +122,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE rule_basis (
+            CREATE TABLE IF NOT EXISTS rule_basis (
                 rule_basis_id INT AUTO_INCREMENT PRIMARY KEY, 
                 rule INT NOT NULL, 
                 document_version INT NOT NULL, 
@@ -134,7 +135,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE rules_snapshots (
+            CREATE TABLE IF NOT EXISTS rules_snapshots (
                 snapshot_id INT AUTO_INCREMENT PRIMARY KEY, 
                 label VARCHAR(255) NOT NULL UNIQUE, 
                 approved_by INT NOT NULL, 
@@ -147,7 +148,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE contract_groups (
+            CREATE TABLE IF NOT EXISTS contract_groups (
                 group_id INT AUTO_INCREMENT PRIMARY KEY, 
                 group_name VARCHAR(255) NOT NULL UNIQUE, 
                 contact_details VARCHAR(255), 
@@ -158,7 +159,7 @@ def create_tables():
 
         db_cursor.execute(
             '''
-            CREATE TABLE contract_types (
+            CREATE TABLE IF NOT EXISTS contract_types (
                 contract_type_id INT AUTO_INCREMENT PRIMARY KEY,
                 type_name VARCHAR(255) NOT NULL UNIQUE
             );
@@ -167,7 +168,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE contracts (
+            CREATE TABLE IF NOT EXISTS contracts (
                 contract_id INT AUTO_INCREMENT PRIMARY KEY, 
                 contract_group INT NOT NULL, 
                 previous_version INT, 
@@ -190,7 +191,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE compliance_reports (
+            CREATE TABLE IF NOT EXISTS compliance_reports (
                 report_id INT AUTO_INCREMENT PRIMARY KEY,
                 contract INT NOT NULL,
                 prior_report INT,
@@ -215,7 +216,7 @@ def create_tables():
 
         db_cursor.execute(
             '''
-            CREATE TABLE risk_levels (
+            CREATE TABLE IF NOT EXISTS risk_levels (
                 risk_level_id INT AUTO_INCREMENT PRIMARY KEY, 
                 risk_name VARCHAR(255) NOT NULL, 
                 description TEXT
@@ -225,7 +226,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE compliance_risks (
+            CREATE TABLE IF NOT EXISTS compliance_risks (
                 risk_id INT AUTO_INCREMENT PRIMARY KEY, 
                 report INT NOT NULL, 
                 risk_level INT NOT NULL, 
@@ -241,7 +242,7 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE snapshot_rules (
+            CREATE TABLE IF NOT EXISTS snapshot_rules (
                 rule INT NOT NULL, 
                 snapshot INT NOT NULL, 
                 PRIMARY KEY (rule, snapshot), 
@@ -253,18 +254,21 @@ def create_tables():
         
         db_cursor.execute(
             '''
-            CREATE TABLE audit_logs (
+            CREATE TABLE IF NOT EXISTS audit_logs (
                 log_id INT AUTO_INCREMENT PRIMARY KEY, 
                 entity_type VARCHAR(255), 
                 entity_id INT, 
                 action VARCHAR(255), 
-                actor VARCHAR(255), 
-                timestamp_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                actor VARCHAR(255),
+                timestamp_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                delta JSON
             );
             '''
         )
         
         
+        createLegislationUpdateReviewsTable()
+
         db_cursor.execute("SHOW TABLES")
 
         for x in db_cursor:
@@ -299,7 +303,6 @@ def ensure_schema():
             db_cursor.close()
             connection.close()
 
-ensure_schema()
 
 
 def executeQuery(sql, val):
@@ -369,10 +372,16 @@ def selectUserByName(username):
 
     sql = "SELECT * FROM users WHERE user_name=%s"
     val = (username,)
-        
+
     myresult = executeQuery(sql, val)
 
     return myresult
+
+def selectUserForPage():
+
+    sql = "SELECT user_id, user_name, full_name, privilege FROM users"
+
+    return executeQuery(sql, None)
 
 def insertUser(user_name, name, password, privilege):
 
@@ -479,7 +488,7 @@ def selectDocumentVersionByDocumentIdAndVersion(doc_id, version):
 
 def insertContractGroup(group_name, contact_details):
 
-    sql = "INSERT INTO contract_groups (group_name, contact_details) VALUES (%s, %s, %s)"
+    sql = "INSERT INTO contract_groups (group_name, contact_details) VALUES (%s, %s)"
     val = (group_name, contact_details)
 
     executeQuery(sql, val)
@@ -491,6 +500,87 @@ def selectContractGroupByName(group_name):
 
     return executeQuery(sql, val)
 
+def selectAllContractGroups():
+
+    sql = "SELECT * FROM contract_groups"
+
+    return executeQuery(sql, None)
+
+#################################################################################
+#                                                                               #
+#                             CONTRACT TYPES TABLE                              #
+#                                                                               #
+#################################################################################
+
+def selectAllContractTypes():
+
+    sql = "SELECT * FROM contract_types"
+
+    return executeQuery(sql, None)
+
+def selectContractTypeByName(name):
+
+    sql = "SELECT * FROM contract_types WHERE type_name=%s"
+    val = (name,)
+
+    return executeQuery(sql, val)
+
+#################################################################################
+#                                                                               #
+#                               CONTRACTS TABLE                                 #
+#                                                                               #
+#################################################################################
+
+def insertContract(contract_group, previous_version, contract_name, contract_type,
+                   version_number, file_path, source_url, uploaded_by,
+                   period_start, period_end):
+
+    sql = (
+        "INSERT INTO contracts "
+        "(contract_group, previous_version, contract_name, contract_type, "
+        "version_number, file_path, source_url, uploaded_by, period_start, period_end) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    )
+    val = (contract_group, previous_version, contract_name, contract_type,
+           version_number, file_path, source_url, uploaded_by, period_start, period_end)
+
+    executeQuery(sql, val)
+
+def findPreviousVersion(contract_type, contract_group):
+
+    sql = (
+        "SELECT * FROM contracts "
+        "WHERE contract_type=%s AND contract_group=%s "
+        "ORDER BY contract_id DESC LIMIT 1"
+    )
+    val = (contract_type, contract_group)
+
+    return executeQuery(sql, val)
+
+def selectContractById(contract_id):
+
+    sql = "SELECT * FROM contracts WHERE contract_id=%s"
+    val = (contract_id,)
+
+    return executeQuery(sql, val)
+
+def selectAllContracts():
+
+    sql = "SELECT * FROM contracts"
+
+    return executeQuery(sql, None)
+
+def selectContractForPage():
+
+    sql = (
+        "SELECT c.contract_id, c.contract_name, c.version_number, "
+        "c.period_start, c.period_end, cg.group_name, ct.type_name "
+        "FROM contracts c "
+        "JOIN contract_groups cg ON c.contract_group = cg.group_id "
+        "JOIN contract_types ct ON c.contract_type = ct.contract_type_id"
+    )
+
+    return executeQuery(sql, None)
 
 #################################################################################
 #                                                                               #
@@ -529,6 +619,13 @@ def selectRuleByCode(code):
 
     sql = "SELECT * FROM rules WHERE rule_name=%s"
     val = (code,)
+
+    return executeQuery(sql, val)
+
+def selectRuleById(rule_id):
+
+    sql = "SELECT * FROM rules WHERE rule_id=%s"
+    val = (rule_id,)
 
     return executeQuery(sql, val)
 
@@ -580,7 +677,7 @@ def selectRulesSnapshotByLabel(label):
 
 def insertSnapshotRule(rule, snapshot):
 
-    sql = "INSERT INTO snapshot_rules (rule_id, snapshot_id) VALUES (%s, %s)"
+    sql = "INSERT INTO snapshot_rules (rule, snapshot) VALUES (%s, %s)"
     val = (rule, snapshot)
 
     executeQuery(sql, val)
@@ -597,6 +694,20 @@ def selectIdAndNameFromAllRiskLevels():
     sql = "SELECT risk_level_id, risk_name FROM risk_levels"
     return executeQuery(sql, None)
 
+def insertRiskLevels(name, description):
+
+    sql = "INSERT INTO risk_levels (risk_name, description) VALUES (%s, %s)"
+    val = (name, description)
+
+    executeQuery(sql, val)
+
+def selectRiskLevelByID(risk_level_id):
+
+    sql = "SELECT * FROM risk_levels WHERE risk_level_id=%s"
+    val = (risk_level_id,)
+
+    return executeQuery(sql, val)
+
 
 #################################################################################
 #                                                                               #
@@ -606,17 +717,28 @@ def selectIdAndNameFromAllRiskLevels():
 
 def insertComplianceReport(contract_id, snapshot_id, prior_report_id, compliance_status):
 
-    sql = "INSERT INTO compliance_reports (contract_id, snapshot_id, prior_report_id, compliance_status) VALUES (%s, %s, %s, %s)"
+    sql = "INSERT INTO compliance_reports (contract, snapshot, prior_report, compliance_status) VALUES (%s, %s, %s, %s)"
     val = (contract_id, snapshot_id, prior_report_id, compliance_status)
 
     executeQuery(sql, val)
 
 def selectComplianceReportByContractId(contract_id):
 
-    sql = "SELECT * FROM compliance_reports WHERE contract_id=%s ORDER BY report_id DESC LIMIT 1"
+    sql = "SELECT * FROM compliance_reports WHERE contract=%s ORDER BY report_id DESC LIMIT 1"
     val = (contract_id,)
 
     return executeQuery(sql, val)
+
+def selectReportForPage():
+
+    sql = (
+        "SELECT r.report_id, r.compliance_status, r.created_at, "
+        "c.contract_name, c.version_number "
+        "FROM compliance_reports r "
+        "JOIN contracts c ON r.contract = c.contract_id"
+    )
+
+    return executeQuery(sql, None)
 
 #################################################################################
 #                                                                               #
@@ -626,10 +748,17 @@ def selectComplianceReportByContractId(contract_id):
 
 def insertComplianceRisk(report_id, risk_level_id, rule_id, finding_text, description):
 
-    sql = "INSERT INTO compliance_risks (report_id, risk_level_id, rule_id, finding_text, description) VALUES (%s, %s, %s, %s, %s)"
+    sql = "INSERT INTO compliance_risks (report, risk_level, rule, finding_text, description) VALUES (%s, %s, %s, %s, %s)"
     val = (report_id, risk_level_id, rule_id, finding_text, description)
 
     executeQuery(sql, val)
+
+def selectComplianceRiskFromReportId(report_id):
+
+    sql = "SELECT * FROM compliance_risks WHERE report=%s"
+    val = (report_id,)
+
+    return executeQuery(sql, val)
 
 #################################################################################
 #                                                                               #
@@ -643,6 +772,30 @@ def insertAuditLog(entity_type, entity_id, action, actor, delta):
     val = (entity_type, entity_id, action, actor, delta)
 
     executeQuery(sql, val)
+
+#################################################################################
+#                                                                               #
+#                      LEGISLATION_UPDATE_REVIEWS TABLE                         #
+#                                                                               #
+#################################################################################
+
+def createLegislationUpdateReviewsTable():
+
+    sql = '''
+    CREATE TABLE IF NOT EXISTS legislation_update_reviews (
+        review_id INT AUTO_INCREMENT PRIMARY KEY,
+        document_version_id INT NOT NULL,
+        proposed_changes JSON,
+        status VARCHAR(50) DEFAULT 'PENDING',
+        reviewed_by VARCHAR(255),
+        reviewed_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (document_version_id)
+            REFERENCES document_versions(version_id)
+    );
+    '''
+
+    executeQuery(sql, None)
 
 '''
 try:

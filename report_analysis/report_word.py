@@ -14,8 +14,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 _OUTCOME_BADGE = {
     "PASS":    ("PASS",    RGBColor(0x22, 0xC5, 0x5E)),
     "WARNING": ("WARNING", RGBColor(0xF5, 0x9E, 0x0B)),
-    "FAIL":    ("FAIL",    RGBColor(0xEF, 0x44, 0x44)),
-    "N/A":     ("N/A",     RGBColor(0x6B, 0x72, 0x80)),
+    "FAIL":    ("NOT COMPLY", RGBColor(0xEF, 0x44, 0x44)),
+    "MISSING": ("MISSING", RGBColor(0xF5, 0x9E, 0x0B)),
 }
 
 _PRIMARY   = RGBColor(0x00, 0x5B, 0x8E)
@@ -216,17 +216,18 @@ def generate_word_report(report_data: dict, output_dir: str = "reports/") -> str
 
     s = report_data["summary"]
 
-    stats_table = doc.add_table(rows=2, cols=5)
+    stats_table = doc.add_table(rows=2, cols=6)
     stats_table.style = "Table Grid"
-    headers = ["Total Rules", "Passed", "Warnings", "Failed", "Critical Failures"]
+    headers = ["Total Rules", "Passed", "Warnings", "Not Comply", "Missing", "Critical Failures"]
     values  = [
         str(s["total_rules"]),
         str(s["passed"]),
         str(s["warnings"]),
         str(s["failed"]),
+        str(s.get("missing", 0)),
         str(s["critical_failures"]),
     ]
-    value_colors = [_TXT, _COMPLIANT, RGBColor(0xF5, 0x9E, 0x0B), _ERROR, _ERROR]
+    value_colors = [_TXT, _COMPLIANT, RGBColor(0xF5, 0x9E, 0x0B), _ERROR, RGBColor(0xF5, 0x9E, 0x0B), _ERROR]
     for col_idx, (h, v, vc) in enumerate(zip(headers, values, value_colors)):
         hdr_run = stats_table.rows[0].cells[col_idx].paragraphs[0].add_run(h)
         hdr_run.bold = True
@@ -250,7 +251,7 @@ def generate_word_report(report_data: dict, output_dir: str = "reports/") -> str
 
     for finding in report_data["findings"]:
         outcome      = finding.get("outcome", "N/A")
-        badge_text, badge_color = _OUTCOME_BADGE.get(outcome, ("N/A", _TXT2))
+        badge_text, badge_color = _OUTCOME_BADGE.get(outcome, ("MISSING", RGBColor(0xF5, 0x9E, 0x0B)))
         is_critical  = finding.get("critical", False)
         rule_id      = finding.get("rule_id", "—")
         rule_title   = finding.get("rule_title", "")

@@ -235,7 +235,8 @@ class SCCApp(ctk.CTk):
                 r.raise_for_status()
                 self.after(0, lambda: cb_ok(r.json()))
             except Exception as e:
-                self.after(0, lambda: cb_err(str(e)))
+                err_msg = str(e)
+                self.after(0, lambda: cb_err(err_msg))
         threading.Thread(target=_run, daemon=True).start()
 
     # ═════════════════════════════════════════════════════════════════════════
@@ -824,8 +825,9 @@ class SCCApp(ctk.CTk):
             findings     = data.get("findings", [])
             report_id    = data.get("report_id")
             failed_urls  = data.get("failed_urls") or []
+            vendor = self._a_vendor_entry.get().strip()
             self._a_res_title.configure(
-                text=f"Results — Report #{report_id}  ·  {len(findings)} findings"
+                text=f"{vendor} — Report #{report_id}  ·  {len(findings)} findings"
             )
 
             # Rebuild amber warning banner
@@ -903,20 +905,22 @@ class SCCApp(ctk.CTk):
                     form_data["compare_prior"] = "true"
                 if urls:
                     form_data["urls"] = "\n".join(urls)
+                form_data["uploaded_by"] = self._user
 
                 if self._analyse_files:
                     files = [
-                        ("file", (os.path.basename(p), open(p, "rb").read()))
+                        ("files", (os.path.basename(p), open(p, "rb").read()))
                         for p in self._analyse_files
                     ]
-                    resp = requests.post(api_url, files=files, data=form_data, timeout=180)
+                    resp = requests.post(api_url, files=files, data=form_data, timeout=600)
                 else:
-                    resp = requests.post(api_url, data=form_data, timeout=180)
+                    resp = requests.post(api_url, data=form_data, timeout=600)
 
                 resp.raise_for_status()
                 self.after(0, lambda: _ok(resp.json()))
             except Exception as e:
-                self.after(0, lambda: _err(str(e)))
+                err_msg = str(e)
+                self.after(0, lambda: _err(err_msg))
 
         threading.Thread(target=_thread, daemon=True).start()
 
@@ -1024,7 +1028,7 @@ class SCCApp(ctk.CTk):
     def _load_report_vendors(self):
         def _ok(data):
             self._r_vendors_data     = data
-            names = [v["group_name"] for v in data]
+            names = list(dict.fromkeys(v["group_name"] for v in data))
             self._r_all_vendor_names = names
             self._r_vendor_combo.configure(values=names)
         self._api("GET", "/vendors/list", _ok, lambda _: None)
@@ -1151,12 +1155,13 @@ class SCCApp(ctk.CTk):
             report = data.get("report", {})
             risks  = data.get("risks", [])
 
-            ctk.CTkLabel(scroll, text=f"Report  #{report.get('report_id')}",
+            vendor = report.get('vendor_name', '')
+            ctk.CTkLabel(scroll, text=f"{vendor} — Report #{report.get('report_id')}",
                          font=ctk.CTkFont(size=22, weight="bold"),
                          text_color=TXT).pack(anchor="w")
             _label(scroll,
                    f"Created: {str(report.get('created_at',''))[:10]}  ·  "
-                   f"Contract #{report.get('contract_id','?')}",
+                   f"{report.get('contract_name', '?')}",
                    size=13).pack(anchor="w", pady=(4, 20))
 
             for risk in risks:
@@ -1320,7 +1325,8 @@ class SCCApp(ctk.CTk):
                     data = json.load(fh)
                 self.after(0, lambda: _ok(data))
             except Exception as e:
-                self.after(0, lambda: _err(str(e)))
+                err_msg = str(e)
+                self.after(0, lambda: _err(err_msg))
 
         threading.Thread(target=_load, daemon=True).start()
 
@@ -1660,7 +1666,8 @@ class SCCApp(ctk.CTk):
                 r.raise_for_status()
                 self.after(0, lambda: _ok(r.json()))
             except Exception as e:
-                self.after(0, lambda: _err(str(e)))
+                err_msg = str(e)
+                self.after(0, lambda: _err(err_msg))
 
         threading.Thread(target=_thread, daemon=True).start()
 
@@ -2001,7 +2008,8 @@ class SCCApp(ctk.CTk):
                     json.dump(data, fh, indent=2, ensure_ascii=False)
                 self.after(0, lambda: on_ok({}))
             except Exception as e:
-                self.after(0, lambda: on_err(str(e)))
+                err_msg = str(e)
+                self.after(0, lambda: on_err(err_msg))
 
         threading.Thread(target=_thread, daemon=True).start()
 
@@ -2028,7 +2036,8 @@ class SCCApp(ctk.CTk):
                     json.dump(data, fh, indent=2, ensure_ascii=False)
                 self.after(0, lambda: on_ok({}))
             except Exception as e:
-                self.after(0, lambda: on_err(str(e)))
+                err_msg = str(e)
+                self.after(0, lambda: on_err(err_msg))
 
         threading.Thread(target=_thread, daemon=True).start()
 
@@ -2048,7 +2057,8 @@ class SCCApp(ctk.CTk):
                     suggested = cd.split("filename=")[-1].strip().strip('"')
                 self.after(0, lambda: self._save_docx(resp.content, suggested))
             except Exception as e:
-                self.after(0, lambda: self._show_docx_error(str(e)))
+                err_msg = str(e)
+                self.after(0, lambda: self._show_docx_error(err_msg))
 
         threading.Thread(target=_thread, daemon=True).start()
 

@@ -52,9 +52,9 @@ def fetch_prior_findings(prior_report_id, conn=None):
                    cr.finding_text,
                    cr.description
             FROM compliance_risks cr
-            JOIN rules       r  ON cr.rule_id       = r.rule_id
-            JOIN risk_levels rl ON cr.risk_level_id = rl.risk_level_id
-            WHERE cr.report_id = %s
+            JOIN rules       r  ON cr.rule       = r.rule_id
+            JOIN risk_levels rl ON cr.risk_level = rl.risk_level_id
+            WHERE cr.report = %s
             """,
             (prior_report_id,),
         )
@@ -151,7 +151,7 @@ _ARTIFACT_B = Path(__file__).parent.parent / "artifact_b.json"
 _RISK_TO_DOCX_OUTCOME = {
     'PASS':          'PASS',
     'NOT_COMPLY':    'FAIL',
-    'MISSING':       'FAIL',
+    'MISSING':       'MISSING',
     'PAY_ATTENTION': 'WARNING',
 }
 
@@ -170,9 +170,11 @@ def build_report_data(report_id, db_conn):
         cursor.execute(
             """
             SELECT cr.report_id, cr.created_at, cr.failed_urls,
-                   c.contract_name, c.counterparty, c.uploaded_by
+                   c.contract_name, c.uploaded_by AS analyst,
+                   cg.group_name AS vendor_name
             FROM compliance_reports cr
-            JOIN contracts c ON cr.contract_id = c.contract_id
+            JOIN contracts c ON cr.contract = c.contract_id
+            JOIN contract_groups cg ON c.contract_group = cg.group_id
             WHERE cr.report_id = %s
             """,
             (report_id,),
@@ -189,9 +191,9 @@ def build_report_data(report_id, db_conn):
                    cri.finding_text,
                    cri.description
             FROM compliance_risks cri
-            JOIN rules r       ON cri.rule_id       = r.rule_id
-            JOIN risk_levels rl ON cri.risk_level_id = rl.risk_level_id
-            WHERE cri.report_id = %s
+            JOIN rules r       ON cri.rule       = r.rule_id
+            JOIN risk_levels rl ON cri.risk_level = rl.risk_level_id
+            WHERE cri.report = %s
             ORDER BY cri.risk_id
             """,
             (report_id,),
@@ -200,13 +202,13 @@ def build_report_data(report_id, db_conn):
     finally:
         cursor.close()
 
-    passed = warnings = failed = critical_failures = 0
+    passed = warnings = failed = missing = critical_failures = 0
     findings = []
 
     for row in risk_rows:
         rule_id      = row["rule_id"] or ""
         artifact_rule = rules_by_id.get(rule_id, {})
-        outcome      = _RISK_TO_DOCX_OUTCOME.get(row["risk_name"], "N/A")
+        outcome      = _RISK_TO_DOCX_OUTCOME.get(row["risk_name"], "MISSING")
         is_critical  = bool(artifact_rule.get("critical", False))
 
         if outcome == "PASS":
@@ -217,6 +219,8 @@ def build_report_data(report_id, db_conn):
             failed += 1
             if is_critical:
                 critical_failures += 1
+        elif outcome == "MISSING":
+            missing += 1
 
         findings.append({
             "rule_id":      rule_id,
@@ -238,13 +242,14 @@ def build_report_data(report_id, db_conn):
         "report_id":    report_id,
         "generated_at": generated_at,
         "contract_name": report_row["contract_name"] or "",
-        "vendor_name":  report_row["counterparty"] or "",
-        "analyst":      report_row["uploaded_by"] or "N/A",
+        "vendor_name":  report_row["vendor_name"] or "",
+        "analyst":      report_row["analyst"] or "N/A",
         "summary": {
-            "total_rules":       passed + warnings + failed,
+            "total_rules":       passed + warnings + failed + missing,
             "passed":            passed,
             "warnings":          warnings,
             "failed":            failed,
+            "missing":           missing,
             "critical_failures": critical_failures,
         },
         "findings":     findings,

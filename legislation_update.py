@@ -336,10 +336,10 @@ def save_reviewer_decisions(review_id, decisions, reviewed_by, conn=None):
             cursor.execute(
                 """
                 INSERT INTO audit_logs
-                    (entity_type, entity_id, action, actor, timestamp_at)
-                VALUES (%s, %s, %s, %s, %s)
+                    (entity_type, entity_id, action, actor, timestamp_at, delta)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                ('legislation_update_review', review_id, action, reviewed_by, now),
+                ('legislation_update_review', review_id, action, reviewed_by, now, None),
             )
             print(f"  audit_log: review_id={review_id} rule_id={rule_id} decision={action}")
 
@@ -475,7 +475,7 @@ def apply_accepted_changes(review_id, reviewed_by, conn=None):
                     cursor.execute(
                         """
                         INSERT INTO rules
-                            (rule_name, description, category_id, approved_by, approved_at)
+                            (rule_name, description, category, approved_by, approved_at)
                         VALUES (%s, %s, %s, %s, %s)
                         """,
                         (new_id, proposed.get('check', ''), category_id, reviewed_by, now),
@@ -521,7 +521,7 @@ def apply_accepted_changes(review_id, reviewed_by, conn=None):
         cursor.execute("SELECT rule_id FROM rules")
         for (db_rule_id,) in cursor.fetchall():
             cursor.execute(
-                "INSERT INTO snapshot_rules (rule_id, snapshot_id) VALUES (%s, %s)",
+                "INSERT INTO snapshot_rules (rule, snapshot) VALUES (%s, %s)",
                 (db_rule_id, snapshot_id),
             )
 

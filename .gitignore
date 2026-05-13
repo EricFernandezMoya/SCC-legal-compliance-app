@@ -1,9 +1,9 @@
-.venv/
-__pycache__/
-*.pyc
-*.log
 .env
 .DS_Store
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.log
 reports/
-*.docx
-.DS_Store

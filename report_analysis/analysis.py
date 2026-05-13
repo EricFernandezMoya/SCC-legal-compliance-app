@@ -110,7 +110,7 @@ def call_claude(system_prompt, user_prompt):
     client = Anthropic()
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=8192,
+        max_tokens=16000,
         system=system_prompt + _JSON_ONLY_INSTRUCTION,
         messages=[{"role": "user", "content": user_prompt}],
     )
@@ -124,11 +124,25 @@ def call_claude(system_prompt, user_prompt):
 def extract_json_findings(raw_response: str) -> list:
     match = re.search(r'```json\s*(\[.*?\])\s*```', raw_response, re.DOTALL)
     if match:
-        return json.loads(match.group(1))
+        try:
+            return json.loads(match.group(1))
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Claude response was truncated or malformed. "
+                f"Try reducing the number of documents or "
+                f"document size. JSON error: {e}"
+            )
     start = raw_response.find('[')
     end   = raw_response.rfind(']')
     if start != -1 and end != -1:
-        return json.loads(raw_response[start:end + 1])
+        try:
+            return json.loads(raw_response[start:end + 1])
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Claude response was truncated or malformed. "
+                f"Try reducing the number of documents or "
+                f"document size. JSON error: {e}"
+            )
     print("RAW CLAUDE RESPONSE (parse failure):")
     print(raw_response)
     raise ValueError(f"No JSON array found in Claude response: {raw_response[:200]}")
@@ -403,7 +417,7 @@ def fetch_group_documents(group_id, conn=None):
             """
             SELECT contract_id, contract_name, file_path
             FROM contracts
-            WHERE group_id = %s
+            WHERE contract_group = %s
             ORDER BY contract_id
             """,
             (group_id,),

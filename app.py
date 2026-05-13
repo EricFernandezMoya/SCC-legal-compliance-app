@@ -53,8 +53,8 @@ def _find_latest_report_for_group(group_id: int) -> Optional[int]:
             """
             SELECT cr.report_id
             FROM compliance_reports cr
-            JOIN contracts c ON cr.contract_id = c.contract_id
-            WHERE c.group_id = %s
+            JOIN contracts c ON cr.contract = c.contract_id
+            WHERE c.contract_group = %s
             ORDER BY cr.created_at DESC
             LIMIT 1
             """,
@@ -133,7 +133,7 @@ def get_vendors():
 
 @app.post("/analyse")
 async def analyse(
-    file: Optional[UploadFile] = File(None),
+    files: List[UploadFile] = File(default=[]),
     contract_name: Optional[str] = Form(None),
     group_id: Optional[int] = Form(None),
     vendor_name: Optional[str] = Form(None),
@@ -141,15 +141,18 @@ async def analyse(
     period_end: Optional[str] = Form(None),
     compare_prior: Optional[str] = Form(None),
     urls: Optional[str] = Form(None),
+    uploaded_by: str = Form(""),
 ):
     text_parts: List[str] = []
 
-    # Parse uploaded file
-    if file and file.filename:
+    # Parse uploaded files
+    for file in files:
+        if not file.filename:
+            continue
         filename = file.filename
         ext = os.path.splitext(filename)[1].lower()
         if ext not in (".pdf", ".doc", ".docx"):
-            raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported.")
+            raise HTTPException(status_code=400, detail=f"{filename}: only PDF and DOCX files are supported.")
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
@@ -188,33 +191,35 @@ async def analyse(
         # Ensure vendor group exists
         if group_id is None and vendor_name:
             cursor.execute(
-                "INSERT INTO contract_groups (group_name, contact_details, contract_type, created_at)"
-                " VALUES (%s, %s, %s, NOW())",
-                (vendor_name, vendor_name, "vendor"),
+                "SELECT group_id FROM contract_groups WHERE group_name = %s LIMIT 1",
+                (vendor_name,),
             )
-            conn.commit()
-            group_id = cursor.lastrowid
-
-        # Resolve counterparty name for contract row
-        counterparty = vendor_name
-        if counterparty is None and group_id is not None:
-            cursor.execute("SELECT group_name FROM contract_groups WHERE group_id = %s", (group_id,))
-            row = cursor.fetchone()
-            counterparty = row[0] if row else ""
+            existing = cursor.fetchone()
+            if existing:
+                group_id = existing[0]
+            else:
+                cursor.execute(
+                    "INSERT INTO contract_groups (group_name, contact_details, created_at)"
+                    " VALUES (%s, %s, NOW())",
+                    (vendor_name, vendor_name),
+                )
+                conn.commit()
+                group_id = cursor.lastrowid
 
         # Auto-generate contract name for multi-document submissions
         if not contract_name:
-            vendor_label  = counterparty or vendor_name or "Unknown Vendor"
+            print(f"DEBUG vendor_name at contract_name build: {vendor_name!r}")
+            vendor_label = vendor_name or "Unknown Vendor"
             contract_name = f"{vendor_label} — Group Analysis {datetime.now().strftime('%Y-%m-%d')}"
 
         # Auto-create contract row
         cursor.execute(
             """
             INSERT INTO contracts
-                (group_id, contract_name, counterparty, version_number, uploaded_at, period_start, period_end)
-            VALUES (%s, %s, %s, 1, NOW(), %s, %s)
+                (contract_group, contract_name, version_number, uploaded_at, uploaded_by, period_start, period_end)
+            VALUES (%s, %s, 1, NOW(), %s, %s, %s)
             """,
-            (group_id, contract_name, counterparty or "", period_start or None, period_end or None),
+            (group_id, contract_name, uploaded_by or None, period_start or None, period_end or None),
         )
         conn.commit()
         contract_id = cursor.lastrowid
@@ -263,10 +268,10 @@ def get_reports_for_contract(contract_id: int):
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
             """
-            SELECT report_id, contract_id, snapshot_id, prior_report_id,
+            SELECT report_id, contract, snapshot, prior_report,
                    created_at
             FROM compliance_reports
-            WHERE contract_id = %s
+            WHERE contract = %s
             ORDER BY created_at DESC
             """,
             (contract_id,),
@@ -326,10 +331,15 @@ def get_report(report_id: int):
 
         cursor.execute(
             """
-            SELECT report_id, contract_id, snapshot_id, prior_report_id,
-                   created_at
-            FROM compliance_reports
-            WHERE report_id = %s
+            SELECT cr.report_id, cr.contract, cr.snapshot, cr.prior_report,
+                   cr.created_at,
+                   cg.group_name AS vendor_name,
+                   c.contract_name,
+                   c.uploaded_by AS analyst
+            FROM compliance_reports cr
+            JOIN contracts c ON cr.contract = c.contract_id
+            JOIN contract_groups cg ON c.contract_group = cg.group_id
+            WHERE cr.report_id = %s
             """,
             (report_id,),
         )
@@ -350,9 +360,9 @@ def get_report(report_id: int):
                    rl.risk_level_id,
                    rl.risk_name
             FROM compliance_risks cr
-            JOIN rules      r  ON cr.rule_id       = r.rule_id
-            JOIN risk_levels rl ON cr.risk_level_id = rl.risk_level_id
-            WHERE cr.report_id = %s
+            JOIN rules      r  ON cr.rule       = r.rule_id
+            JOIN risk_levels rl ON cr.risk_level = rl.risk_level_id
+            WHERE cr.report = %s
             """,
             (report_id,),
         )
@@ -529,7 +539,7 @@ def _db_upsert_rule(rule_id: str, description: str, category: str,
         cursor = conn.cursor()
         if insert:
             cursor.execute(
-                "INSERT INTO rules (rule_name, description, category_id, approved_by, approved_at)"
+                "INSERT INTO rules (rule_name, description, category, approved_by, approved_at)"
                 " SELECT %s, %s, category_id, NULL, NULL"
                 " FROM categories WHERE category_code = %s LIMIT 1",
                 (rule_id, description, category),
@@ -576,7 +586,7 @@ def get_vendors_list():
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
-            "SELECT group_id, group_name FROM contract_groups ORDER BY group_name"
+            "SELECT MIN(group_id) AS group_id, group_name FROM contract_groups GROUP BY group_name ORDER BY group_name"
         )
         return cursor.fetchall()
     except Error as err:
@@ -614,15 +624,15 @@ def get_vendor_reports(group_id: int):
             """
             SELECT
                 cr.report_id,
-                cr.contract_id,
+                cr.contract,
                 c.contract_name,
                 cg.group_name,
                 cr.created_at,
                 c.uploaded_by AS analyst
             FROM compliance_reports cr
-            JOIN contracts c ON cr.contract_id = c.contract_id
-            JOIN contract_groups cg ON c.group_id = cg.group_id
-            WHERE c.group_id = %s
+            JOIN contracts c ON cr.contract = c.contract_id
+            JOIN contract_groups cg ON c.contract_group = cg.group_id
+            WHERE c.contract_group = %s
             ORDER BY cr.created_at DESC
             """,
             (group_id,),
@@ -662,7 +672,7 @@ def get_contracts_directory():
                 c.period_start,
                 c.period_end
             FROM contract_groups cg
-            LEFT JOIN contracts c ON c.group_id = cg.group_id
+            LEFT JOIN contracts c ON c.contract_group = cg.group_id
             ORDER BY cg.group_name, c.uploaded_at DESC
             """
         )

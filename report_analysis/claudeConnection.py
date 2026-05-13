@@ -1,3 +1,4 @@
+from pathlib import Path
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -12,7 +13,7 @@ def textQueryToAntropic(textQuery):
 # to access to the Anthropic session it is required a key that is saved in a .env file
 # load_dotenv() access to the .env file to obtein the key    
     
-    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
     client = Anthropic()
 
@@ -28,4 +29,4 @@ def textQueryToAntropic(textQuery):
     )
 
     return message.content[0].text
-
+    

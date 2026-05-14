@@ -4,7 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from odf import text, teletype
 from odf.opendocument import load
-
+from playwright.sync_api import sync_playwright
 
 def format_as_python_literal(text, max_line_length=80):
     words = text.split()
@@ -57,15 +57,16 @@ def parseODT(file_name):
 
     return file_text
 
+
 def parseWebsite(url):
-
-    response = requests.get(url)
-
-    soup = BeautifulSoup(response.text, 'html.parser')
-    paragraphs = soup.find_all("p")
-    text = "\n".join(p.get_text(strip=True) for p in paragraphs)
-    return text
-
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto(url, wait_until="networkidle")
+        text = page.inner_text("body")
+        browser.close()
+        return text
+    
 def parseFile(file_name):
 
     text = None

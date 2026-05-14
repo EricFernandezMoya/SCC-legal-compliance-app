@@ -103,6 +103,12 @@ def selectPrivilegeByName(name):
     
     return executeQuery(sql, val)
 
+def selectPrivilegeById(id):
+    
+    sql = "SELECT * FROM privileges WHERE privilege_id=%s"
+    val = (id,)
+    
+    return executeQuery(sql, val)
 
 def selectPrivileges():
 
@@ -500,6 +506,14 @@ def createContractTypesTable():
             '''
 
     executeQuery(sql, None)
+
+def insertContractType(name):
+
+    sql = "INSERT INTO contract_types (type_name) VALUE (%s)"
+
+    val = (name,)
+
+    executeQuery(sql, val)
 
 def selectAllContractTypes():
 

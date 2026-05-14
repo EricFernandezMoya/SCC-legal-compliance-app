@@ -1,9 +1,11 @@
 import tkinter as tk
 from tkinter import Frame, ttk
 
+from graphical_interface.graphicalInterface import CARD
+
 class SearchableTable(Frame):
     def __init__(self, parent, columns, load_function, on_double_click=None, width=800, height=500):
-        super().__init__(parent, bg="lightBlue1")
+        super().__init__(parent, bg=CARD)
 
         self.columns = columns
         self.load_function = load_function

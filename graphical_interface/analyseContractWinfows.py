@@ -12,7 +12,7 @@ from report_analysis.document_parser import parseFile
 from report_analysis.reports import save_report
 
 def analyseNewContract():
-    global spinner
+    global spinner, analyse_button
 
     win = create_modal_window("Contract", toggle=False)
     if not win:
@@ -50,7 +50,16 @@ def analyseNewContract():
 
 
     def analyseConract():
+        global documentText, contract
         contractSelectedId = None
+
+        analyse_button.config(state="disabled")
+
+        # Lock the window so user cannot interact with anything else
+        win.grab_set()
+        spinner.place(relx=0.5, rely=0.5, anchor="center")
+        spinner.start()
+
 
         for r in selectContractForPage():
             c = f"{r[1]} - {r[3]}"
@@ -80,20 +89,28 @@ def analyseNewContract():
             messagebox.showwarning("Error: Contract Parsing", "The text could not be extracted from the source file — skipping analysis.")
             return
         
-        spinner.place(relx=0.5, rely=0.5, anchor="center")
-        spinner.start()
+        # Show spinner
         
-        
-        findings = analyse_contract(documentText)
-        report_id = save_report(contract[0][0], findings)
+        def worker():
+            findings = analyse_contract(documentText)
+            report_id = save_report(contract[0][0], findings)
 
-        win.after(0, lambda: (spinner.stop(), spinner.destroy(), closeSecondWindow(win, toggle=False)))
+        # Back to main thread
+            def finish():
+                spinner.stop()
+                spinner.destroy()
+                analyse_button.config(state="normal")
+                win.grab_release()
+                closeSecondWindow(win, toggle=False)
+                showReports(report_id)
 
-        showReports(report_id)
+            win.after(0, finish)
+        threading.Thread(target=worker, daemon=True).start()
 
-        
+    
 
-    Button(frame, text="Analyse", command=analyseConract, width=10).grid(row=3, column=0, sticky="e", pady=20)
+    analyse_button = Button(frame, text="Analyse", command=analyseConract, width=10)
+    analyse_button.grid(row=3, column=0, sticky="e", pady=20)
     
     win.update_idletasks()
     win.deiconify()

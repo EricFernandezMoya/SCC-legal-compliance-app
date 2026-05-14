@@ -1,19 +1,14 @@
-import tkinter as tk
-from tkinter import Frame, Label, Button, Entry, messagebox
+from tkinter import  Frame, Label, Button, messagebox
+from PIL import Image, ImageTk
 
+from graphical_interface.widgets.entryClass import entry
+from graphical_interface.widgets.roundedCardClass import make_rounded_card
 from userHandling.userHandling import userLogin, selectUserByName
 from classesFile import User
 from state import state
 from graphical_interface.mainWindows import openMainWindows
 
-from graphical_interface.graphicalInterface import (
-    show_frame, 
-    root, 
-    LOGIN_FRAME_SIZE,
-    logInFrame
-)
-
-
+from graphical_interface.graphicalInterface import BG, BORDER, CARD, TXT, logInFrame
 
 def login():
 
@@ -40,19 +35,49 @@ def login():
     usernameText.delete(0, "end")
     passwordEntry.delete(0, "end")
 
-loginTitleLabel = Label(logInFrame, text="Login", font=("Arial", 16))
-loginTitleLabel.place(relx=0.5, y=20, anchor="center")
+logInFrame.config(bg=BG)
 
-usernameLabel = Label(logInFrame, text="User name:")
-usernameLabel.place(x=10, y=50)
-usernameText = Entry(logInFrame, width=25)
-usernameText.place(x=10, y=70)
+wrap = Frame(logInFrame, bg=BG)
+wrap.place(relx=0.5, rely=0.5, anchor="center")
 
-passwordLabel = Label(logInFrame, text="Password:")
-passwordLabel.place(x=10, y=110)
-passwordEntry = Entry(logInFrame, width=25, show="*")
-passwordEntry.place(x=10, y=130)
+
+# --- PAGE TITLE ---
+Label(wrap, text="Software Compliance Tool", font=("Arial", 28, "bold"), fg="#000000", bg=BG).pack(pady=(40, 120))
+
+# --- CARD FRAME ---
+shadow, card = make_rounded_card(wrap, width=440, height=360)
+shadow.pack()
+loginCardFrame = card
+
+# --- SIGN IN TITLE ---
+Label(loginCardFrame, text="Sign in", font=("Arial", 22, "bold"), fg=TXT, bg=CARD).pack(anchor="w",padx=60, pady=(20, 40))
+
+# ---LOGIN ENTRY ---
+usernameLabel = Label(loginCardFrame, text="User name:", fg=TXT, bg=CARD)
+usernameLabel.pack(anchor="w", padx=60)
+usernameText = entry(loginCardFrame, "Enter username", width=320)
+usernameText.pack(anchor="w",padx=60, pady=(4, 16))
+
+passwordLabel = Label(loginCardFrame, text="Password:", fg=TXT, bg=CARD)
+passwordLabel.pack(anchor="w", padx=60)
+passwordEntry = entry(loginCardFrame, "Enter password", width=320, is_password=True)
+passwordEntry.pack(anchor="w", padx=60, pady=(4, 40))
 passwordEntry.bind("<Return>", lambda event: login())
 
-loginButton = Button(logInFrame, text="Log in", command=lambda: login())
-loginButton.place(x=10, y=170)
+loginButton = Button(
+    loginCardFrame, 
+    text="Sign in", 
+    command= lambda: login(), 
+    height=1, 
+    width=12, 
+    bg="#0078D4", 
+    fg="white", 
+    activebackground="#005A9E", 
+    relief="flat"
+    ).pack(pady=16)
+
+# --- LOGO ---
+img = Image.open("iconImages/council_logo.png")   
+logo_img = ImageTk.PhotoImage(img)
+if logo_img: 
+    Label(wrap,image=logo_img, bg=BG).pack(pady=(120, 40))

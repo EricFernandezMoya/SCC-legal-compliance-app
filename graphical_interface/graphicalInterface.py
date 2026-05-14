@@ -3,9 +3,23 @@ from tkinter import Frame, Label, Text, Button, Toplevel
 
 from state import state
 
-LOGIN_FRAME_SIZE = "300x300"
+PRIMARY   = "#005B8E"
+TEAL      = "#00B5CC"
+CARD      = "#F4F7FA"
+BG        = "#FFFFFF"
+SIDEBAR   = "#FFFFFF"
+BORDER    = "#E5E7EB"
+SHADOW    = "#D4DCE8"
+TXT       = "#1A1A2E"
+TXT2      = "#6B7280"
+SUCCESS   = "#22C55E"
+WARNING   = "#F59E0B"
+ERROR     = "#EF4444"
+NAV_HOVER = "#EFF6FF"
+
+
 MEDIUM_FRAME_SIZE = "500x500"
-LARGE_FRAME_SIZE = "1100x700"
+LARGE_FRAME_SIZE = "1300x900"
 
 root = tk.Tk()
 logInFrame = Frame(root)
@@ -55,14 +69,14 @@ def start_app():
     # Import UI modules here to avoid circular imports
     from graphical_interface import loginWindows
 
-    root.title("SCC Legal")
+    root.title("Software Compliance Tool")
 
     # Layout so frames fill the space
     root.rowconfigure(0, weight=1)
     root.columnconfigure(0, weight=1)
     loginWindows.logInFrame.grid(row=0, column=0, sticky="nsew")
 
-    show_frame(loginWindows.logInFrame, LOGIN_FRAME_SIZE)
+    show_frame(loginWindows.logInFrame, LARGE_FRAME_SIZE)
 
     root.mainloop()
     

@@ -163,7 +163,7 @@ def insert_risks_levels():
 
     insertRiskLevels("Comply", "The document contains a clause that explicitly and unambiguously satisfies this rule. No further action needed.")
     insertRiskLevels("Pay attention", "A clause exists but the language is vague or ambiguous and cannot be confirmed as compliant. The reviewer must read the clause directly and make their own judgment.")
-    insertRiskLevels("Not Comply", "A clause is present but explicitly fails this rule. The specific language that caused the flag is quoted directly in the report.")
+    insertRiskLevels("Not comply", "A clause is present but explicitly fails this rule. The specific language that caused the flag is quoted directly in the report.")
     insertRiskLevels("Missing", "No clause addressing this rule could be found in the document at all. The report states what should be present and why.")
 
 

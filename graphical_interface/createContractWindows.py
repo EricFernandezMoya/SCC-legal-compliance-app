@@ -189,7 +189,13 @@ def openNewContractWindow():
     def save():
         name = contractNameEntry.get().strip()
         group = contractGroupSelected.get()
-        ctype = contractTypeSelected.get()
+        
+        if newContractTypeEntry.get().strip():
+            ctype = newContractTypeEntry.get()
+            print(ctype)
+            insertContractType(ctype)
+        else:
+            ctype = contractTypeSelected.get()
         prev = findPreviousVersion(ctype, group)
         version_text = versionEntry.get().strip()
         file_path = filePathEntry.get().strip()

@@ -180,6 +180,8 @@ def openCreateDocumentVersionWindows():
             notesText.get("1.0", "end-1c")
         )
         state.selected_document_name = ""
+        from graphical_interface.main_frame.legislationPage import load_legislation_data
+        load_legislation_data()
         closeSecondWindow(win, toggle=True)
 
     Button(frame, text="Save", command=save, width=10).grid(row=13, column=1, sticky="e", pady=10)

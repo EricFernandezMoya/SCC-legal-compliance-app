@@ -229,7 +229,7 @@ def openNewContractWindow():
             start,
             end
         )
-        from graphical_interface.mainWindows import load_contracts
+        from graphical_interface.main_frame.contractsPage import load_contracts
         load_contracts()
         closeSecondWindow(win, toggle=False)
 

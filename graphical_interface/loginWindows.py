@@ -6,15 +6,15 @@ from graphical_interface.widgets.roundedCardClass import make_rounded_card
 from userHandling.userHandling import userLogin, selectUserByName
 from classesFile import User
 from state import state
-from graphical_interface.mainWindows import openMainWindows
+from graphical_interface.main_frame.mainWindows import openMainWindows
 
 from graphical_interface.graphicalInterface import BG, BORDER, CARD, TXT, logInFrame
 
 def login():
 
-    global usernameText, passwordEntry
+    global usernameEntry, passwordEntry, usernameLabel
 
-    username = usernameText.get()
+    username = usernameEntry.get()
     password = passwordEntry.get()
 
     if not username or not password:
@@ -32,9 +32,16 @@ def login():
             else:
                 messagebox.showerror("Login Failed", "Invalid username or password.")
 
-    usernameText.delete(0, "end")
-    passwordEntry.delete(0, "end")
+    usernameEntry.delete(0, "end")
+    usernameEntry.insert(0, "Enter username")
+    usernameEntry.config(fg="#888888")
 
+    passwordEntry.delete(0, "end")
+    passwordEntry.insert(0, "Enter password")
+    passwordEntry.config(fg="#888888")
+    passwordEntry.config(show="")
+    usernameLabel.focus_set()
+    
 logInFrame.config(bg=BG)
 
 wrap = Frame(logInFrame, bg=BG)
@@ -55,26 +62,28 @@ Label(loginCardFrame, text="Sign in", font=("Arial", 22, "bold"), fg=TXT, bg=CAR
 # ---LOGIN ENTRY ---
 usernameLabel = Label(loginCardFrame, text="User name:", fg=TXT, bg=CARD)
 usernameLabel.pack(anchor="w", padx=60)
-usernameText = entry(loginCardFrame, "Enter username", width=320)
-usernameText.pack(anchor="w",padx=60, pady=(4, 16))
+usernameEntry = entry(loginCardFrame, "Enter username", width=320)
+usernameEntry.pack(anchor="w",padx=60, pady=(4, 16))
 
 passwordLabel = Label(loginCardFrame, text="Password:", fg=TXT, bg=CARD)
 passwordLabel.pack(anchor="w", padx=60)
 passwordEntry = entry(loginCardFrame, "Enter password", width=320, is_password=True)
-passwordEntry.pack(anchor="w", padx=60, pady=(4, 40))
+passwordEntry.pack(anchor="w", padx=60, pady=(4, 20))
 passwordEntry.bind("<Return>", lambda event: login())
 
 loginButton = Button(
     loginCardFrame, 
     text="Sign in", 
     command= lambda: login(), 
-    height=1, 
-    width=12, 
+    font=("Arial", 12, "bold"),
+    height=2, 
+    width=14, 
     bg="#0078D4", 
     fg="white", 
-    activebackground="#005A9E", 
+    activebackground="#005A9E",
+    activeforeground="white", 
     relief="flat"
-    ).pack(pady=16)
+    ).pack(pady=10)
 
 # --- LOGO ---
 img = Image.open("iconImages/council_logo.png")   

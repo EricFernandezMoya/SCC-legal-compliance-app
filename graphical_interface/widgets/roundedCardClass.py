@@ -2,14 +2,14 @@ from tkinter import Canvas, Frame
 
 from graphical_interface.graphicalInterface import BG, CARD, SHADOW
 
-def make_rounded_card(parent, width=340, height=260, radius=20, bg=CARD, shadow=SHADOW):
+def make_rounded_card(parent, width=340, height=260, radius=20, bg=CARD, shadow=SHADOW, frame_color=BG):
     """
     Return (canvas, inner_frame).
     Both shadow and card have rounded corners.
     """
 
     canvas = Canvas(parent, width=width+6, height=height+6,
-                    bg=BG, highlightthickness=0, bd=0)
+                    bg=frame_color, highlightthickness=0, bd=0)
     canvas.pack()
 
     def draw_rounded_rect(x1, y1, x2, y2, r, color):
@@ -30,10 +30,10 @@ def make_rounded_card(parent, width=340, height=260, radius=20, bg=CARD, shadow=
     # Inner frame for widgets
     inner_frame = Frame(canvas, bg=bg)
     canvas.create_window(
-        0, 0,
+        10, 10,
         window=inner_frame,
         anchor="nw",
-        width=width,
-        height=height
+        width=width-20,
+        height=height-20
     )
     return canvas, inner_frame

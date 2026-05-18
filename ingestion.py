@@ -3,12 +3,31 @@ import os
 import re
 from datetime import datetime
 from dotenv import load_dotenv
-from database.database import *
+from database.database import (
+    insertPrivilege,
+    insertRiskLevels,
+    selectPrivilegeByName,
+    insertCategory,
+    selectCategoryByName,
+    insertRule,
+    selectRuleByCode,
+    insertDocumentType,
+    selectDocumentTypeByName,
+    insertDocument,
+    selectDocumentByName,
+    insertDocumentVersion,
+    selectDocumentVersionByDocumentIdAndVersion,
+    insertRuleBasis,
+    insertRulesSnapshot,
+    selectRulesSnapshotByLabel,
+    insertSnapshotRule,
+    selectUserByName,
+)
 from userHandling.userHandling import createUser
 load_dotenv()
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-JSON_PATH = os.path.join(BASE_DIR, 'SCCProject', 'artifact_b.json')
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+JSON_PATH = os.path.join(BASE_DIR, 'report_analysis', 'artifact_b.json')
 
 
 # ---------------------------------------------------------------------------

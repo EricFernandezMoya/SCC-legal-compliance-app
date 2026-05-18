@@ -69,7 +69,7 @@ def create_tables():
     createRiskLevelsTable()
     createComplianceRisksTable()
     createSnapshotRulesTable()
-
+    createLegislationUpdateReviewsTable()
 
 
 #################################################################################
@@ -81,7 +81,7 @@ def create_tables():
 def createPrivilegesTable():
 
     sql = '''
-            CREATE TABLE privileges (
+            CREATE TABLE IF NOT EXISTS privileges (
                 privilege_id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(255) NOT NULL UNIQUE
             );
@@ -125,7 +125,7 @@ def selectPrivileges():
 def createUsersTable():
 
     sql = '''
-            CREATE TABLE users (
+            CREATE TABLE IF NOT EXISTS users (
                 user_id INT AUTO_INCREMENT PRIMARY KEY, 
                 user_name VARCHAR(100) NOT NULL UNIQUE, 
                 full_name VARCHAR(255), 
@@ -159,6 +159,20 @@ def selectUserForPage():
 
     return executeQuery(sql, None)
 
+def updateUser(user_id, full_name, password, privilege):
+
+    sql = "UPDATE users SET full_name=%s, password=%s, privilege=%s WHERE user_id=%s;"
+    val = (full_name, password, privilege, user_id)
+
+    executeQuery(sql, val)
+
+def deleteUser(user_id):
+
+    sql = "DELETE FROM users WHERE user_id=%s"
+    val = (user_id,)
+
+    executeQuery(sql, val)
+
 #################################################################################
 #                                                                               #
 #                              CATEGORIES TABLE                                 #
@@ -168,7 +182,7 @@ def selectUserForPage():
 def createCategoriesTable():
 
     sql = '''
-        CREATE TABLE categories (
+        CREATE TABLE IF NOT EXISTS categories (
             category_id INT AUTO_INCREMENT PRIMARY KEY, 
             category_code VARCHAR(25) NOT NULL UNIQUE, 
             category_name VARCHAR(255) NOT NULL UNIQUE
@@ -203,7 +217,7 @@ def selectCategoryByName(name):
 def createRulesTable():
 
     sql = '''
-            CREATE TABLE rules (
+            CREATE TABLE IF NOT EXISTS rules (
                 rule_id INT AUTO_INCREMENT PRIMARY KEY, 
                 rule_name VARCHAR(255) NOT NULL UNIQUE, 
                 rule_code VARCHAR(255) NOT NULL UNIQUE, 
@@ -240,6 +254,19 @@ def selectRuleById(rule_id):
 
     return executeQuery(sql, val)
 
+def selectRuleIdByName(rule_id):
+
+    sql = "SELECT rule_id FROM rules WHERE rule_name = %s"
+    val = (rule_id,)
+
+    return executeQuery(sql, val)
+
+def selectRulesFromSnapshot(snapshot_id):
+
+    sql = "SELECT r.rule_id, r.rule_code, r.rule_name, c.category_name FROM rules r JOIN categories c ON r.category = c.category_id JOIN snapshot_rules sr ON r.rule_id = sr.rule WHERE sr.snapshot = %s;"
+    val = (snapshot_id,)
+
+    return executeQuery(sql, val)
 
 #################################################################################
 #                                                                               #
@@ -250,7 +277,7 @@ def selectRuleById(rule_id):
 def createDocumentTypesTable():
 
     sql = '''
-            CREATE TABLE document_types (
+            CREATE TABLE IF NOT EXISTS document_types (
                 document_type_id INT AUTO_INCREMENT PRIMARY KEY,
                 type_name VARCHAR(255) NOT NULL UNIQUE
             );
@@ -291,7 +318,7 @@ def selectAllDocumentTypeNames():
 def createDocumentsTable():
 
     sql = '''
-            CREATE TABLE documents (
+            CREATE TABLE IF NOT EXISTS documents (
                 document_id INT AUTO_INCREMENT PRIMARY KEY, 
                 document_name VARCHAR(500) NOT NULL UNIQUE, 
                 jurisdiction VARCHAR(255), 
@@ -338,11 +365,28 @@ def selectAllDocuments():
 
     return my_result
 
-def selectDocumentsforPage():
+def selectDocumentsforPage(snapshot_id):
 
-    sql ="SELECT document_id, document_name, jurisdiction, year FROM documents"
+    sql ='''
+        SELECT DISTINCT
+            dv.version_id,
+            d.document_name,
+            d.jurisdiction,
+            d.year,
+            dv.version_number
+        FROM snapshot_rules sr
+        JOIN rule_basis rb 
+            ON rb.rule = sr.rule
+        JOIN document_versions dv 
+            ON dv.version_id = rb.document_version
+        JOIN documents d 
+            ON d.document_id = dv.document
+        WHERE sr.snapshot = %s;
+        '''
 
-    my_result = executeQuery(sql, None)
+    val = (snapshot_id,)
+
+    my_result = executeQuery(sql, val)
 
     return my_result
 
@@ -355,7 +399,7 @@ def selectDocumentsforPage():
 def createDocumentVersionsTable():
 
     sql = '''
-            CREATE TABLE document_versions (
+            CREATE TABLE IF NOT EXISTS document_versions (
                 version_id INT AUTO_INCREMENT PRIMARY KEY, 
                 document INT NOT NULL, 
                 version_number VARCHAR(255), 
@@ -383,6 +427,11 @@ def selectDocumentVersionByDocumentIdAndVersion(doc_id, version):
 
     return executeQuery(sql, val)
 
+def selectDocumentVersionUnused():
+
+    sql = "SELECT dv.version_id, d.document_name, dv.file_path, dv.source_url FROM documents d JOIN document_versions dv ON dv.document = d.document_id LEFT JOIN rule_basis rb ON rb.document_version = dv.version_id WHERE rb.document_version IS NULL;"
+
+    return executeQuery(sql, None)
 #################################################################################
 #                                                                               #
 #                              RULE_BASIS TABLE                                 #
@@ -392,7 +441,7 @@ def selectDocumentVersionByDocumentIdAndVersion(doc_id, version):
 def createRuleBasisTable():
 
     sql = '''
-            CREATE TABLE rule_basis (
+            CREATE TABLE IF NOT EXISTS rule_basis (
                 rule_basis_id INT AUTO_INCREMENT PRIMARY KEY, 
                 rule INT NOT NULL, 
                 document_version INT NOT NULL, 
@@ -419,7 +468,7 @@ def insertRuleBasis(rule, document_version, section_name):
 def createRulesSnapshotsTable():
     
     sql = '''
-            CREATE TABLE rules_snapshots (
+            CREATE TABLE IF NOT EXISTS rules_snapshots (
                 snapshot_id INT AUTO_INCREMENT PRIMARY KEY, 
                 label VARCHAR(255) NOT NULL UNIQUE, 
                 approved_by INT NOT NULL, 
@@ -440,7 +489,7 @@ def insertRulesSnapshot(label, approved_by, created_at):
 
 def selectLastRulesSnapshot():
     
-    sql = "SELECT snapshot_id FROM rules_snapshots ORDER BY approved_at DESC"
+    sql = "SELECT * FROM rules_snapshots ORDER BY approved_at DESC LIMIT 1"
 
     return executeQuery(sql, None)
 
@@ -451,6 +500,14 @@ def selectRulesSnapshotByLabel(label):
 
     return executeQuery(sql, val)
 
+def selectAllSnapshots():
+    
+    sql = "SELECT * FROM rules_snapshots"
+    
+    return executeQuery(sql, None)
+
+
+
 #################################################################################
 #                                                                               #
 #                            CONTRACT GROUP TABLE                               #
@@ -460,7 +517,7 @@ def selectRulesSnapshotByLabel(label):
 def createContractGroupsTable():
 
     sql = '''
-            CREATE TABLE contract_groups (
+            CREATE TABLE IF NOT EXISTS contract_groups (
                 group_id INT AUTO_INCREMENT PRIMARY KEY, 
                 group_name VARCHAR(255) NOT NULL UNIQUE, 
                 contact_details VARCHAR(255), 
@@ -499,7 +556,7 @@ def selectAllContractGroups():
 def createContractTypesTable():
 
     sql = '''
-            CREATE TABLE contract_types (
+            CREATE TABLE IF NOT EXISTS contract_types (
                 contract_type_id INT AUTO_INCREMENT PRIMARY KEY,
                 type_name VARCHAR(255) NOT NULL UNIQUE
             );
@@ -529,6 +586,7 @@ def selectContractTypeByName(name):
     return executeQuery(sql, val)
 
 
+
 #################################################################################
 #                                                                               #
 #                               CONTRACT TABLE                                  #
@@ -538,7 +596,7 @@ def selectContractTypeByName(name):
 def createContractsTable():
         
     sql = '''
-            CREATE TABLE contracts (
+            CREATE TABLE IF NOT EXISTS contracts (
                 contract_id INT AUTO_INCREMENT PRIMARY KEY, 
                 contract_group INT NOT NULL, 
                 previous_version INT, 
@@ -600,6 +658,13 @@ def selectContractForPage():
 
     return executeQuery(sql, None)
 
+def selectContractsByGroup(group_id):
+    
+    sql = "SELECT * FROM contracts WHERE contract_group=%s"
+    val = (group_id,)
+
+    return executeQuery(sql, val)    
+
 #################################################################################
 #                                                                               #
 #                           COMPLIANCE_REPORTS TABLE                            #
@@ -609,13 +674,15 @@ def selectContractForPage():
 def createComplianceReportsTable():
 
     sql ='''
-            CREATE TABLE compliance_reports (
+            CREATE TABLE IF NOT EXISTS compliance_reports (
                 report_id INT AUTO_INCREMENT PRIMARY KEY, 
-                contract INT NOT NULL UNIQUE, 
+                contract INT NOT NULL, 
                 prior_report INT, 
                 snapshot INT NOT NULL, 
                 compliance_status VARCHAR(255), 
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP, 
+                failed_urls TEXT,
+                is_group TINYINT(1) NOT NULL DEFAULT 0,
                 FOREIGN KEY (contract) REFERENCES contracts(contract_id), 
                 FOREIGN KEY (prior_report) REFERENCES compliance_reports(report_id), 
                 FOREIGN KEY (snapshot) REFERENCES rules_snapshots(snapshot_id)
@@ -624,25 +691,50 @@ def createComplianceReportsTable():
     
     executeQuery(sql, None)
 
-def insertComplianceReport(contract, snapshot, prior_report, compliance_status):
+def insertComplianceReport(contract, snapshot, prior_report, compliance_status, is_group):
 
-    sql = "INSERT INTO compliance_reports (contract, snapshot, prior_report, compliance_status) VALUES (%s, %s, %s, %s)"
-    val = (contract, snapshot, prior_report, compliance_status)
+    sql = "INSERT INTO compliance_reports (contract, snapshot, prior_report, compliance_status, is_group) VALUES (%s, %s, %s, %s, %s)"
+    val = (contract, snapshot, prior_report, compliance_status, is_group)
 
     executeQuery(sql, val)
 
-def selectComplianceReportByContractId(contract):
+def selectComplianceReportByContractId(contract, is_group):
 
-    sql = "SELECT * FROM compliance_reports WHERE contract=%s"
-    val = (contract,)
+    sql = "SELECT * FROM compliance_reports WHERE contract=%s AND is_group=%s"
+    val = (contract, is_group)
 
     return executeQuery(sql, val)
 
-def selectReportForPage():
+def selectComplianceReportById(id):
 
-    sql = "SELECT cr.report_id, cg.group_name, ct.type_name, cr.compliance_status, cr.created_at FROM compliance_reports cr JOIN contracts c ON cr.contract = c.contract_id JOIN contract_groups cg ON c.contract_group = cg.group_id JOIN contract_types ct ON c.contract_type = ct.contract_type_id;"
+    sql = "SELECT * FROM compliance_reports WHERE report_id=%s"
+    val = (id,)
+
+    return executeQuery(sql, val)
+
+def selectContractReportForPage():
+
+    sql = "SELECT cr.report_id, cg.group_name, ct.type_name, cr.compliance_status, cr.created_at FROM compliance_reports cr JOIN contracts c ON cr.contract = c.contract_id JOIN contract_groups cg ON c.contract_group = cg.group_id JOIN contract_types ct ON c.contract_type = ct.contract_type_id WHERE is_group=0;"
+    
     return executeQuery(sql, None)
 
+def selectGroupReportForPage():
+
+    sql = "SELECT cr.report_id, cg.group_name, cr.compliance_status, cr.created_at FROM compliance_reports cr JOIN contracts c ON cr.contract = c.contract_id JOIN contract_groups cg ON c.contract_id = cg.group_id  WHERE is_group=1;"
+    
+    return executeQuery(sql, None)
+
+def selectLastReportDone():
+
+    sql = "SELECT * FROM compliance_reports ORDER BY created_at DESC LIMIT 1;"
+
+    return executeQuery(sql, None) 
+
+def selectAllComplianceReports():
+    
+    sql = "SELECT * FROM compliance_reports"
+
+    return executeQuery(sql, None) 
 
 #################################################################################
 #                                                                               #
@@ -653,7 +745,7 @@ def selectReportForPage():
 def createRiskLevelsTable():
 
     sql = '''
-            CREATE TABLE risk_levels (
+            CREATE TABLE IF NOT EXISTS risk_levels (
                 risk_level_id INT AUTO_INCREMENT PRIMARY KEY, 
                 risk_name VARCHAR(255) NOT NULL, 
                 description TEXT
@@ -692,7 +784,7 @@ def selectRiskLevelByID(risk_level_id):
 def createComplianceRisksTable():
 
     sql = '''
-        CREATE TABLE compliance_risks (
+        CREATE TABLE IF NOT EXISTS compliance_risks (
             risk_id INT AUTO_INCREMENT PRIMARY KEY,
             report INT NOT NULL,
             risk_level INT NOT NULL,
@@ -730,7 +822,7 @@ def selectComplianceRiskFromReportId(report_id):
 def createSnapshotRulesTable():
 
     sql =  '''
-            CREATE TABLE snapshot_rules (
+            CREATE TABLE IF NOT EXISTS snapshot_rules (
                 rule INT NOT NULL, 
                 snapshot INT NOT NULL, 
                 PRIMARY KEY (rule, snapshot), 
@@ -757,7 +849,7 @@ def insertSnapshotRule(rule, snapshot):
 def createAuditLogsTable():
 
     sql = '''
-            CREATE TABLE audit_logs (
+            CREATE TABLE IF NOT EXISTS audit_logs (
                 log_id INT AUTO_INCREMENT PRIMARY KEY, 
                 entity_type VARCHAR(255), 
                 entity_id INT, 
@@ -777,3 +869,34 @@ def insertAuditLog(entity_type, entity_id, action, actor, delta):
 
     executeQuery(sql, val)
 
+#################################################################################
+#                                                                               #
+#                      LEGISLATION_UPDATE_REVIEWS TABLE                         #
+#                                                                               #
+#################################################################################
+
+def createLegislationUpdateReviewsTable():
+
+    sql = '''
+    CREATE TABLE IF NOT EXISTS legislation_update_reviews (
+        review_id INT AUTO_INCREMENT PRIMARY KEY,
+        document_version_id INT NOT NULL,
+        proposed_changes JSON,
+        status VARCHAR(50) DEFAULT 'PENDING',
+        reviewed_by INT,
+        reviewed_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (document_version_id) REFERENCES document_versions(version_id),
+        FOREIGN KEY (reviewed_by) REFERENCES users (user_id)
+    );
+    '''
+
+    executeQuery(sql, None)
+
+def selectLegislationUpdateReviewById(reviews_id):
+
+    sql = "SELECT * from legislation_update_reviews WHERE review_id=%s"
+
+    val = (reviews_id,)
+
+    return executeQuery(sql, val)

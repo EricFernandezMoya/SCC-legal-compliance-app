@@ -12,6 +12,26 @@ class SearchableCombobox(ttk.Combobox):
         self._original_values = list(self["values"])
         self.bind("<KeyRelease>", self._on_keyrelease)
 
+        comboboxStyle = ttk.Style()
+        comboboxStyle.theme_use("default")
+        comboboxStyle.configure(
+            "CustomCombobox.TCombobox",
+            fieldbackground="white",
+            background="white",
+            foreground="black",
+        )
+        comboboxStyle.map(
+            "CustomCombobox.TCombobox",
+            fieldbackground=[("readonly", "white"), ("!disabled", "white")],
+            foreground=[("readonly", "black"), ("!disabled", "black")],
+            selectbackground=[("readonly", "white"), ("!disabled", "white")],
+            selectforeground=[("readonly", "black"), ("!disabled", "black")],
+        )
+
+        self.config(style="CustomCombobox.TCombobox")
+
+
+
     def _on_keyrelease(self, event):
         # Ignore navigation keys
         if event.keysym in ("Up", "Down", "Return", "Escape"):

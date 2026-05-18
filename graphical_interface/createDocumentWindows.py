@@ -179,8 +179,8 @@ def openNewLegalDocument():
             desc,
             selectDocumentTypeByName(doc_type)[0][0],
         )
-        from graphical_interface.mainWindows import load_documents
-        load_documents()
+        from graphical_interface.main_frame.legislationPage import load_legislation_data
+        load_legislation_data
         state.selected_document_name = name
         
         closeSecondWindow(win, toggle=False)

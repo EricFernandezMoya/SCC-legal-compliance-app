@@ -1,14 +1,14 @@
 import tkinter as tk
-from graphical_interface.graphicalInterface import BG, PRIMARY, TEAL, TXT
+from graphical_interface.graphicalInterface import BG, PRIMARY, TEAL, TXT, NAV_HOVER
 
 class FlatHoverButton(tk.Label):
     active_button = None
 
     def __init__(self, parent, text, command,
-                 fg=BG, hover=TEAL, active_color=PRIMARY,
+                 fg=BG, hover=NAV_HOVER, active_color=PRIMARY, active_hover=TEAL,
                  text_color=TXT, height=40,
                  anchor="w", font=("Arial", 14, "bold"),
-                 padx=12, active=False, **kw):
+                 padx=12, **kw):
 
         super().__init__(
             parent,
@@ -23,10 +23,11 @@ class FlatHoverButton(tk.Label):
 
         self.fg_color = fg
         self.hover_color = hover
+        self.active_hover_color = active_hover
         self.active_color = active_color
         self.command = command
         self.fixed_height = height
-        self.is_active = active
+        self.is_active = False
 
         # Force pixel height
         self.bind("<Configure>", self._fix_height)
@@ -45,11 +46,16 @@ class FlatHoverButton(tk.Label):
 
     def _on_enter(self, event):
         if not self.is_active:
-            self.config(bg=self.hover_color, fg=BG)
+            self.config(bg=self.hover_color, fg=TXT)
+        else:
+            self.config(bg=self.active_hover_color, fg=BG)
+
 
     def _on_leave(self, event):
         if not self.is_active:
             self.config(bg=self.fg_color, fg=TXT)
+        else:
+            self.config(bg=self.active_color, fg=BG)
 
     def _on_click(self, event):
         # Deactivate previous active button
